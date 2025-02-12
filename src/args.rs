@@ -51,9 +51,9 @@ struct ArgsBuilder {
 }
 
 impl Default for Args {
-    fn default() -> Self {
-        Self::new()
-    }
+  fn default() -> Self {
+    Self::new()
+  }
 }
 
 impl Args {

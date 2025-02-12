@@ -237,18 +237,14 @@ impl Golden {
     let stderr_name = format!("{name}.stderr");
     if self.file == stdout_name {
       match (read(golden_dir.join(&stdout_name)), core::str::from_utf8(&output.stdout)) {
-        (Ok(golden), Ok(output)) => {
-          self.assert(&stdout_name, &golden, output, &mut errs)
-        }
+        (Ok(golden), Ok(output)) => self.assert(&stdout_name, &golden, output, &mut errs),
         (Ok(_), Err(_)) => errs.push(AssertError::Stdout),
         (Err(e), Ok(_)) => errs.push(e),
         (Err(e), Err(_)) => errs.extend([e, AssertError::Stdout]),
       }
     } else if self.file == stderr_name {
       match (read(golden_dir.join(&stderr_name)), core::str::from_utf8(&output.stderr)) {
-        (Ok(golden), Ok(output)) => {
-          self.assert(&stderr_name, &golden, output, &mut errs)
-        }
+        (Ok(golden), Ok(output)) => self.assert(&stderr_name, &golden, output, &mut errs),
         (Ok(_), Err(_)) => errs.push(AssertError::Stderr),
         (Err(e), Ok(_)) => errs.push(e),
         (Err(e), Err(_)) => errs.extend([e, AssertError::Stderr]),
