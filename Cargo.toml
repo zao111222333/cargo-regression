@@ -1,6 +1,6 @@
 [package]
 name = "cargo-regression"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 authors = ["Junzhuo <zhou@junzhuo.site>"]
@@ -9,7 +9,7 @@ readme = "README.md"
 repository = "https://github.com/zao111222333/cargo-regression"
 documentation = "https://docs.rs/cargo-regression"
 categories = ["development-tools"]
-description = "Regressions."
+description = "Collect test task from input files, execute them and compare results with golden."
 
 [dependencies]
 tokio = { version = "1.42", features = ["full"] }

@@ -1,4 +1,4 @@
-exe-path = "{{root_dir}}/local_bin"
+exe-path = "{{root-dir}}/local_bin"
 extensions = ["sh"]
 [extend]
 envs = { group = "test_local_bin" }

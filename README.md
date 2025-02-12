@@ -38,7 +38,7 @@ There are many other configs that hold the same behavior as `extensions`:
 ### Variable Table
 | Variable | Description |
 | -- | -- |
-| `{{root_dir}}`  | The absolute path of test root. |
+| `{{root-dir}}`  | The absolute path of test root. |
 | `{{name}}`      | The name of task file. |
 | `{{extension}}` | The extension of task file. |
 
@@ -60,12 +60,12 @@ cargo regression ./demo --filter demo/test_premit/* --permits 2
 
 ## assertion
 
-### `exit_code`
+### `exit-code`
 
 Assert the exit code, default is `0`.
 ``` toml
 [assert]
-exit_code = 1
+exit-code = 1
 ```
 
 ### `equal`
@@ -82,11 +82,29 @@ Match pattern and assert the number (count) of it.
 [[assert.golden]]
 file = "{{name}}.stdout"
 match = [
-  # regular expression to match "fo", "foo", "fooo", ...
-  { pattern = "f.*o", count = 4 },
-  # this means file should contain "fo"
-  { pattern = "fo", count_at_least = 1 },
+  # regular expression match
+  { pattern = 'f.*o', count = 4 },
+  # should contain word "fo" at least once
+  { pattern = '\bfo\b', count-at-least = 1 },
+  # should contain word "fo" at most once
+  { pattern = '\bfo0\b', count-at-most = 1 },
 ]
+```
+
+## Use it as API
+see [./examples](./examples)
+
+``` rust
+use cargo_regression::{test, Args, TestExitCode};
+
+#[tokio::main]
+async fn main() -> TestExitCode {
+  // Get arguments from CLI
+  let args = Args::parse_from(std::env::args_os());
+  // Or set fixed arguemnts
+  let args = Args::new().debug(true).work_dir("tmp").root_dir("demo");
+  test(args).await
+}
 ```
 
 ## TODO

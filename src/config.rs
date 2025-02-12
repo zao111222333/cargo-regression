@@ -155,7 +155,7 @@ impl FullConfig {
     let eval_str = |s: &mut String| -> Result<(), BuildError> {
       *s = s.replace("{{extension}}", &self.extension);
       *s = s.replace("{{name}}", &self.name);
-      *s = s.replace("{{root_dir}}", &args.root_dir_abs);
+      *s = s.replace("{{root-dir}}", &args.root_dir_abs);
       Ok(())
     };
     eval_str(&mut self.exe_path)?;
