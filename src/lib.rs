@@ -5,7 +5,7 @@ mod regression;
 use assert::Assert;
 
 pub use args::Args;
-pub use regression::{test, TestExitCode};
+pub use regression::TestExitCode;
 
 #[tokio::test]
 async fn demo() -> TestExitCode {
@@ -14,5 +14,5 @@ async fn demo() -> TestExitCode {
     .work_dir("tmp")
     .root_dir("demo")
     .filter(&["demo/test-premit/test2.sh"]);
-  test(args).await
+  args.test().await
 }

@@ -109,7 +109,7 @@ async fn main() -> TestExitCode {
   let args = Args::parse_from(std::env::args_os());
   // Or set fixed arguemnts
   let args = Args::new().debug(true).work_dir("tmp").root_dir("demo");
-  test(args).await
+  args.test().await
 }
 ```
 

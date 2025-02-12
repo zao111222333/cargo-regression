@@ -111,15 +111,17 @@ impl Termination for TestExitCode {
   }
 }
 
-pub async fn test(args: Args) -> TestExitCode {
-  let now = Instant::now();
-  TestExitCode(
-    match args.rebuild() {
-      Ok(args) => _test(args).await,
-      Err(e) => Err(vec![e]),
-    },
-    now,
-  )
+impl Args {
+  pub async fn test(self) -> TestExitCode {
+    let now = Instant::now();
+    TestExitCode(
+      match self.rebuild() {
+        Ok(args) => _test(args).await,
+        Err(e) => Err(vec![e]),
+      },
+      now,
+    )
+  }
 }
 async fn _test(args: Args) -> Result<TestResult, Vec<BuildError>> {
   let f1 = async move {
