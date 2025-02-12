@@ -9,6 +9,10 @@ pub use regression::{test, TestExitCode};
 
 #[tokio::test]
 async fn demo() -> TestExitCode {
-  let args = Args::new().debug(true).work_dir("tmp").root_dir("cases");
+  let args = Args::new()
+    .debug(true)
+    .work_dir("tmp")
+    .root_dir("demo")
+    .filter(&["demo/test-premit/test2.sh"]);
   test(args).await
 }

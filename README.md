@@ -1,5 +1,8 @@
 # Cargo Regression
 
+[![pipeline](https://github.com/zao111222333/cargo-regression/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zao111222333/cargo-regression/actions/workflows/ci.yml)
+[![crates.io](https://shields.io/crates/v/cargo-regression.svg?style=flat-square&label=crates.io)](https://crates.io/crates/cargo-regression)
+
 Collect test task from input files, execute them and compare results with golden.
 
 ## Usage
@@ -11,6 +14,8 @@ Build your test files like [./demo](./demo), then
 cargo regression ./demo --debug
 ```
 ![](screenshot.svg)
+
+The tests will be exectued in `./tmp` in default, change the dir by `--work-dir path`.
 
 ### Set Extension(s)
 `cargo-regression` will collect all files that match extensions as test tasks, you can set extensions in two ways:
@@ -47,14 +52,14 @@ There are many other configs that hold the same behavior as `extensions`:
 Only test specified tasks.
 ``` shell
 cargo regression ./demo
-cargo regression ./demo --filter demo/test_premit/*
+cargo regression ./demo --filter demo/trybuild/*
 ```
 
 ### Schedule Parallelism
 `permits` and `permit` are virtual resource costs, you can define `permits` in arguments (default=1), and define `permit` in task toml config file (default=0).
 ``` shell
-cargo regression ./demo --filter demo/test_premit/*
-cargo regression ./demo --filter demo/test_premit/* --permits 2
+cargo regression ./demo --filter demo/test-premit/* --permits 1
+cargo regression ./demo --filter demo/test-premit/* --permits 2
 ```
 
 
