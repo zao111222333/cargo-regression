@@ -1,0 +1,5 @@
+extensions = ["sh"]
+exe-path = "bash"
+[extend]
+# extend envs
+envs = { group = "test_sh" }

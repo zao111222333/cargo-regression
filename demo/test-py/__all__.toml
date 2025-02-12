@@ -1,0 +1,13 @@
+# set exe_path for all sub-test
+exe-path = "python"
+# you can define the requried permit for each test
+# to control the max parallelism,
+# the defualt permit is 0, which means the task will
+# always process without manage.
+extensions = ["py"]
+# In default, only `{{name}}.*` will be added to work_dir
+extern-files = ["data.json"]
+
+[extend]
+args = ["var1", "var2"]
+envs = { k3 = "v3", k4 = "v4" }

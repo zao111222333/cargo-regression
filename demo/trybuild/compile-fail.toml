@@ -1,0 +1,6 @@
+[assert]
+exit-code = 1
+
+[[assert.golden]]
+file = "{{name}}.stderr"
+equal = true

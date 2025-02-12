@@ -1,0 +1,30 @@
+# override envs
+envs = { k3 = "v3", k4 = "v4" }
+
+[extend]
+args = ["var3", "var4"]
+
+[assert]
+exit-code = 1
+
+[[assert.golden]]
+file = "{{name}}.stderr"
+match = [
+  { pattern = "err", count = 1 },
+  { pattern = "ok", count = 2 },
+]
+
+[[assert.golden]]
+file = "{{name}}.stdout"
+match = [
+  { pattern = 'f.*o', count = 4 }, # regular expression match
+  { pattern = '\bfo\b', count-at-least = 2 }, # this means file should contain word "fo"
+]
+
+[[assert.golden]]
+file = "{{name}}.text"
+equal = true
+
+[[assert.golden]]
+file = "out.text"
+equal = true

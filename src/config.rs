@@ -1,0 +1,462 @@
+use core::fmt;
+use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
+use std::{
+  borrow::Cow,
+  fs::{create_dir_all, read_to_string, remove_dir_all},
+  ops::{Deref, DerefMut},
+  path::{Path, PathBuf},
+  process::{Command, Output},
+  sync::Arc,
+};
+
+use crate::{
+  assert::{AssertError, DisplayErrs},
+  regression::{BuildError, FailedState, State},
+  Args, Assert,
+};
+
+#[derive(Default, Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "kebab-case")]
+#[serde(transparent)]
+pub struct Source<T> {
+  #[serde(skip)]
+  source: Vec<String>,
+  inner: T,
+}
+struct SourceDislay<'a>(&'a Vec<String>);
+impl<'a> fmt::Display for SourceDislay<'a> {
+  #[inline]
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    for line in self.0 {
+      writeln!(f, "# {line}")?;
+    }
+    Ok(())
+  }
+}
+impl<T> Source<T> {
+  fn source_display(&self) -> SourceDislay<'_> {
+    SourceDislay(&self.source)
+  }
+  fn fmt_source<P: AsRef<Path>>(p: P) -> String {
+    p.as_ref().to_path_buf().display().to_string()
+  }
+  fn add_source<P: AsRef<Path>>(&mut self, p: P, debug: bool) {
+    if debug {
+      self.source.push(Self::fmt_source(p));
+    }
+  }
+}
+impl<T, P: AsRef<Path>> From<(T, P, bool)> for Source<T> {
+  #[inline]
+  fn from(value: (T, P, bool)) -> Self {
+    Self {
+      source: if value.2 { vec![Self::fmt_source(value.1)] } else { vec![] },
+      inner: value.0,
+    }
+  }
+}
+impl<T> From<T> for Source<T> {
+  #[inline]
+  fn from(inner: T) -> Self {
+    Self { source: vec![], inner }
+  }
+}
+
+impl<T> Deref for Source<T> {
+  type Target = T;
+  #[inline]
+  fn deref(&self) -> &Self::Target {
+    &self.inner
+  }
+}
+
+impl<T> DerefMut for Source<T> {
+  #[inline]
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.inner
+  }
+}
+
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) struct FullConfig {
+  #[serde(skip)]
+  name: String,
+  #[serde(skip)]
+  extension: String,
+  #[serde(skip)]
+  filtered: bool,
+  #[serde(skip)]
+  ignore: Source<bool>,
+  pub(crate) permit: Source<u32>,
+  exe_path: Source<String>,
+  args: Source<Vec<String>>,
+  envs: Source<IndexMap<String, String>>,
+  pub(crate) extensions: Source<Vec<String>>,
+  /// In default, only link all `{{name}}*` files into work_dir.
+  /// Use it to specify extern files.
+  extern_files: Source<Vec<String>>,
+  assert: Source<Assert>,
+}
+
+#[derive(Default, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct Config {
+  ignore: Option<bool>,
+  permit: Option<u32>,
+  exe_path: Option<String>,
+  extensions: Option<Vec<String>>,
+  args: Option<Vec<String>>,
+  envs: Option<IndexMap<String, String>>,
+  extern_files: Option<Vec<String>>,
+  extend: Option<Extend>,
+  assert: Option<Assert>,
+}
+
+impl FullConfig {
+  pub(crate) fn new_filtered() -> Self {
+    Self { filtered: true, ..Default::default() }
+  }
+  pub(crate) fn new(args: Args) -> Self {
+    Self {
+      exe_path: args.exe_path.to_owned().into(),
+      args: args.args.iter().map(ToString::to_string).collect::<Vec<_>>().into(),
+      extensions: args
+        .extensions
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .into(),
+      ..Default::default()
+    }
+  }
+  fn check(&self, file: &Path, args: Args) -> Result<(), BuildError> {
+    if *self.permit > args.permits {
+      return Err(BuildError::PermitEcxceed(
+        file.to_path_buf(),
+        *self.permit,
+        args.permits,
+      ));
+    }
+    if self.exe_path.is_empty() {
+      return Err(BuildError::MissConfig(file.to_path_buf(), "exe_path"));
+    }
+    if self.extensions.is_empty() {
+      return Err(BuildError::MissConfig(file.to_path_buf(), "extensions"));
+    }
+    Ok(())
+  }
+  pub(crate) fn eval(mut self, file: &Path, args: Args) -> Result<Self, BuildError> {
+    self.check(file, args)?;
+    self.extension = file.extension().unwrap().to_str().unwrap().to_owned();
+    let name = file.with_extension("");
+    self.name = name.file_name().unwrap().to_str().unwrap().to_owned();
+    let eval_str = |s: &mut String| -> Result<(), BuildError> {
+      *s = s.replace("{{extension}}", &self.extension);
+      *s = s.replace("{{name}}", &self.name);
+      *s = s.replace("{{root_dir}}", &args.root_dir_abs);
+      Ok(())
+    };
+    eval_str(&mut self.exe_path)?;
+    for args in self.args.iter_mut() {
+      eval_str(args)?;
+    }
+    for extern_file in self.extern_files.iter_mut() {
+      eval_str(extern_file)?;
+    }
+    for v in self.envs.values_mut() {
+      eval_str(v)?;
+    }
+    self.envs.entry("name".to_owned()).insert_entry(self.name.clone());
+    self
+      .envs
+      .entry("root_dir".to_owned())
+      .insert_entry(args.root_dir_abs.to_owned());
+    if let Some(goldens) = self.assert.golden.as_deref_mut() {
+      for golden in goldens.iter_mut() {
+        eval_str(&mut golden.file)?;
+      }
+    }
+    Ok(self)
+  }
+  #[inline]
+  pub(crate) fn update(
+    mut self,
+    config_path: &Path,
+    debug: bool,
+  ) -> Result<Self, BuildError> {
+    let toml_str = read_to_string(&config_path)
+      .map_err(|e| BuildError::UnableToRead(config_path.to_path_buf(), e))?;
+    let config = toml::from_str::<Config>(&toml_str)
+      .map_err(|e| BuildError::Toml(config_path.to_path_buf(), e))?;
+    if let Some(ignore) = config.ignore {
+      self.ignore = (ignore, config_path, debug).into();
+    }
+    if let Some(extensions) = config.extensions {
+      self.extensions = (extensions, config_path, debug).into();
+    }
+    if let Some(permit) = config.permit {
+      self.permit = (permit, config_path, debug).into();
+    }
+    if let Some(exe_path) = config.exe_path {
+      self.exe_path = (exe_path, config_path, debug).into();
+    }
+    if let Some(args) = config.args {
+      self.args = (args, config_path, debug).into();
+    }
+    if let Some(envs) = config.envs {
+      self.envs = (envs, config_path, debug).into();
+    }
+    if let Some(extern_files) = config.extern_files {
+      self.extern_files = (extern_files, config_path, debug).into();
+    }
+    if let Some(assert) = config.assert {
+      self.assert = (assert, config_path, debug).into();
+    }
+    if let Some(extend) = config.extend {
+      if let Some(args) = extend.args {
+        self.args.extend(args);
+        self.args.add_source(config_path, debug);
+      }
+      if let Some(envs) = extend.envs {
+        self.envs.extend(envs);
+        self.envs.add_source(config_path, debug);
+      }
+      if let Some(extern_files) = extend.extern_files {
+        self.extern_files.extend(extern_files);
+        self.extern_files.add_source(config_path, debug);
+      }
+    }
+    Ok(self)
+  }
+}
+
+impl FullConfig {
+  #[inline]
+  pub(crate) async fn test(self, path: &Path, args: Args) -> State {
+    if self.filtered {
+      return State::FilteredOut;
+    }
+    if *self.ignore {
+      return State::Ignored;
+    }
+    let root_dir = path.parent().unwrap();
+    let path_str = path.display().to_string();
+    let work_dir = PathBuf::from(args.work_dir).join(
+      // remove the root of root_dir
+      if path_str.starts_with(args.root_dir) {
+        &path_str[args.root_dir.len() + 1..]
+      } else {
+        &path_str
+      },
+    );
+    let name = self.name.clone();
+    let mut errs = if let Err(e) = self.prepare_dir(root_dir, &work_dir) {
+      vec![e]
+    } else {
+      let toml_str = if args.debug { self.to_toml() } else { String::new() };
+      let debug_config = work_dir.join(format!("__debug__.{name}.toml"));
+      let work_dir_clone = work_dir.clone();
+      let task_future = async move {
+        if args.regolden {
+          self.regolden(root_dir, work_dir_clone).await
+        } else {
+          self.assert(root_dir, work_dir_clone).await
+        }
+      };
+      let debug_futures = async move {
+        if args.debug {
+          tokio::fs::write(debug_config, toml_str).await
+        } else {
+          Ok(())
+        }
+      };
+      let (_, errs) = tokio::join!(debug_futures, task_future);
+      errs
+    };
+    if errs.is_empty() {
+      State::Ok
+    } else {
+      let err_report = work_dir.join(format!("{name}.err.log"));
+      match tokio::fs::write(&err_report, DisplayErrs(&errs).to_string()).await {
+        Ok(_) => State::Failed(Some(FailedState::ReportSaved(err_report))),
+        Err(e) => State::Failed(Some(FailedState::NoReport({
+          errs.push(AssertError::Write(err_report.display().to_string(), e));
+          errs
+        }))),
+      }
+    }
+  }
+  #[inline]
+  fn to_toml(&self) -> String {
+    toml::to_string(&self)
+      .map(|s| {
+        s.replacen("args = [", &format!("{}args = [", self.args.source_display()), 1)
+          .replacen(
+            "exe_path = ",
+            &format!("{}exe_path = ", self.exe_path.source_display()),
+            1,
+          )
+          .replacen(
+            "extern_files = ",
+            &format!("{}extern_files = ", self.extern_files.source_display()),
+            1,
+          )
+          .replacen("[envs]", &format!("{}[envs]", self.envs.source_display()), 1)
+          .replace("[assert]", &format!("{}[assert]", self.assert.source_display()))
+          .replace("[[assert", &format!("{}[[assert", self.assert.source_display()))
+      })
+      .unwrap_or(String::new())
+  }
+  #[inline]
+  fn prepare_dir(&self, root_dir: &Path, work_dir: &Path) -> Result<(), AssertError> {
+    let root_dir = if root_dir.is_absolute() {
+      Cow::Borrowed(root_dir)
+    } else {
+      Cow::Owned(
+        std::fs::canonicalize(root_dir)
+          .map_err(|e| AssertError::UnableToReadDir(root_dir.display().to_string(), e))?,
+      )
+    };
+    // create
+    if work_dir.exists() {
+      remove_dir_all(work_dir)
+        .map_err(|e| AssertError::UnableToDeleteDir(work_dir.display().to_string(), e))?;
+    }
+    create_dir_all(work_dir)
+      .map_err(|e| AssertError::UnableToCreateDir(work_dir.display().to_string(), e))?;
+    // golden
+    let golden_dir = root_dir.join("__golden__");
+    if golden_dir.exists() {
+      let link = work_dir.join("__golden__");
+      std::os::unix::fs::symlink(&golden_dir, &link).map_err(|e| {
+        AssertError::LinkFile(
+          golden_dir.display().to_string(),
+          link.display().to_string(),
+          e,
+        )
+      })?;
+    }
+    // extern_file
+    for extern_file in self.extern_files.iter() {
+      let path = root_dir.join(&extern_file);
+      if path.exists() {
+        let link = work_dir.join(extern_file);
+        std::os::unix::fs::symlink(&path, &link).map_err(|e| {
+          AssertError::LinkFile(path.display().to_string(), link.display().to_string(), e)
+        })?;
+      }
+    }
+    for entry in root_dir
+      .read_dir()
+      .map_err(|e| AssertError::UnableToReadDir(root_dir.display().to_string(), e))?
+    {
+      if let Ok(entry) = entry {
+        let full_name = entry.file_name();
+        if full_name.to_str().unwrap_or("").starts_with(&self.name) {
+          let original = entry.path();
+          let link = work_dir.join(full_name);
+          std::os::unix::fs::symlink(&original, &link).map_err(|e| {
+            AssertError::LinkFile(
+              original.display().to_string(),
+              link.display().to_string(),
+              e,
+            )
+          })?;
+        }
+      }
+    }
+    Ok(())
+  }
+  #[inline]
+  fn exe(&self, work_dir: &Path) -> Result<Output, AssertError> {
+    Command::new(&*self.exe_path)
+      .current_dir(work_dir)
+      .args(&*self.args)
+      .envs(&*self.envs)
+      .output()
+      .map_err(|e| {
+        AssertError::Executes(
+          {
+            let mut v = vec![self.exe_path.inner.clone()];
+            v.extend(self.args.iter().cloned());
+            v
+          },
+          e,
+        )
+      })
+  }
+  #[inline]
+  async fn regolden(self, root_dir: &Path, work_dir: PathBuf) -> Vec<AssertError> {
+    // get all hash for current dir
+    // let output = self.exe(&work_dir);
+    // root_dir.join("__regolden__");
+    todo!()
+  }
+  #[inline]
+  async fn assert(self, root_dir: &Path, work_dir: PathBuf) -> Vec<AssertError> {
+    match self.exe(&work_dir) {
+      Ok(output) => {
+        self
+          .assert
+          .inner
+          .assert(self.name, work_dir, root_dir.join("__golden__"), Arc::new(output))
+          .await
+      }
+      Err(e) => vec![e],
+    }
+  }
+}
+
+#[derive(Default, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct Extend {
+  args: Option<Vec<String>>,
+  envs: Option<IndexMap<String, String>>,
+  extern_files: Option<Vec<String>>,
+}
+
+#[test]
+fn test_parse() {
+  let toml_str = r#"
+exe_path = "python"
+args = ["{{name}}.py", "var1", "var2"]
+envs = { k1 = "v1", k2 = "v2" }
+
+[extend]
+args = ["var3", "var4"]
+envs = { k3 = "v3", k4 = "v4" }
+
+[assert]
+exit_code = 1
+
+[[assert.golden]]
+file = "{{name}}.stderr"
+match = [
+  { pattern = "*err", count = 1 },
+  { pattern = "*ok", count = 2 },
+]
+
+[[assert.golden]]
+file = "{{name}}.stdout"
+match = [
+  { pattern = "*ok", count_at_least = 1 }
+]
+
+[[assert.golden]]
+file = "{{name}}.text"
+equal = true
+
+[[assert.golden]]
+file = "out.text"
+equal = true
+      "#;
+  let res = toml::from_str::<Config>(toml_str);
+  match res {
+    Ok(config) => {
+      println!("{config:#?}");
+    }
+    Err(e) => println!("{e}"),
+  }
+}

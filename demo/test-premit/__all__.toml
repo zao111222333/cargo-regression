@@ -1,0 +1,3 @@
+exe-path = "bash"
+extensions = ["sh"]
+permit = 1
