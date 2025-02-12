@@ -140,7 +140,7 @@ impl FullConfig {
       ));
     }
     if self.exe_path.is_empty() {
-      return Err(BuildError::MissConfig(file.to_path_buf(), "exe_path"));
+      return Err(BuildError::MissConfig(file.to_path_buf(), "exe-path"));
     }
     if self.extensions.is_empty() {
       return Err(BuildError::MissConfig(file.to_path_buf(), "extensions"));
