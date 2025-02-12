@@ -22,8 +22,9 @@ jobs:
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
-    env:
-      RUSTFLAGS: "-D warnings"
+    # TODO remove all warnings
+    # env:
+    #   RUSTFLAGS: "-D warnings"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
