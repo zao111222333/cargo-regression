@@ -63,7 +63,7 @@ pub enum AssertError {
 }
 
 pub(crate) struct DisplayErrs<'a, E: fmt::Display>(pub(crate) &'a Vec<E>);
-impl<'a, E: fmt::Display> fmt::Display for DisplayErrs<'a, E> {
+impl<E: fmt::Display> fmt::Display for DisplayErrs<'_, E> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     for err in self.0 {
       writeln!(f, "ERROR {err}")?;
@@ -238,7 +238,7 @@ impl Golden {
     if self.file == stdout_name {
       match (read(golden_dir.join(&stdout_name)), core::str::from_utf8(&output.stdout)) {
         (Ok(golden), Ok(output)) => {
-          self.assert(&stdout_name, &golden, &output, &mut errs)
+          self.assert(&stdout_name, &golden, output, &mut errs)
         }
         (Ok(_), Err(_)) => errs.push(AssertError::Stdout),
         (Err(e), Ok(_)) => errs.push(e),
@@ -247,7 +247,7 @@ impl Golden {
     } else if self.file == stderr_name {
       match (read(golden_dir.join(&stderr_name)), core::str::from_utf8(&output.stderr)) {
         (Ok(golden), Ok(output)) => {
-          self.assert(&stderr_name, &golden, &output, &mut errs)
+          self.assert(&stderr_name, &golden, output, &mut errs)
         }
         (Ok(_), Err(_)) => errs.push(AssertError::Stderr),
         (Err(e), Ok(_)) => errs.push(e),

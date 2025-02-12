@@ -50,6 +50,12 @@ struct ArgsBuilder {
   root_dir: String,
 }
 
+impl Default for Args {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Args {
   pub const fn new() -> Self {
     Self {
@@ -67,12 +73,12 @@ impl Args {
   }
   pub(crate) fn rebuild(mut self) -> Result<Self, BuildError> {
     self.root_dir_abs = leak_string(
-      std::fs::canonicalize(&self.root_dir)
+      std::fs::canonicalize(self.root_dir)
         .map_err(|e| BuildError::ReadDir(PathBuf::from(&self.root_dir), e))?
         .display()
         .to_string(),
     );
-    self.filter = leak_string_vec_res(self.filter.into_iter().map(|path| {
+    self.filter = leak_string_vec_res(self.filter.iter().map(|path| {
       let path = PathBuf::from(path);
       match std::fs::canonicalize(&path) {
         Ok(p) => Ok(p.display().to_string()),
@@ -108,7 +114,7 @@ impl Args {
     if self.filter.is_empty() {
       Ok(false)
     } else {
-      let file_abs = std::fs::canonicalize(&file)
+      let file_abs = std::fs::canonicalize(file)
         .map_err(|e| BuildError::ReadDir(PathBuf::from(&file), e))?
         .display()
         .to_string();

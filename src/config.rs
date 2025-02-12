@@ -25,7 +25,7 @@ pub struct Source<T> {
   inner: T,
 }
 struct SourceDislay<'a>(&'a Vec<String>);
-impl<'a> fmt::Display for SourceDislay<'a> {
+impl fmt::Display for SourceDislay<'_> {
   #[inline]
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     for line in self.0 {
@@ -155,7 +155,7 @@ impl FullConfig {
     let eval_str = |s: &mut String| -> Result<(), BuildError> {
       *s = s.replace("{{extension}}", &self.extension);
       *s = s.replace("{{name}}", &self.name);
-      *s = s.replace("{{root-dir}}", &args.root_dir_abs);
+      *s = s.replace("{{root-dir}}", args.root_dir_abs);
       Ok(())
     };
     eval_str(&mut self.exe_path)?;
@@ -186,7 +186,7 @@ impl FullConfig {
     config_path: &Path,
     debug: bool,
   ) -> Result<Self, BuildError> {
-    let toml_str = read_to_string(&config_path)
+    let toml_str = read_to_string(config_path)
       .map_err(|e| BuildError::UnableToRead(config_path.to_path_buf(), e))?;
     let config = toml::from_str::<Config>(&toml_str)
       .map_err(|e| BuildError::Toml(config_path.to_path_buf(), e))?;
@@ -307,7 +307,7 @@ impl FullConfig {
           .replace("[assert]", &format!("{}[assert]", self.assert.source_display()))
           .replace("[[assert", &format!("{}[[assert", self.assert.source_display()))
       })
-      .unwrap_or(String::new())
+      .unwrap_or_default()
   }
   #[inline]
   fn prepare_dir(&self, root_dir: &Path, work_dir: &Path) -> Result<(), AssertError> {
@@ -340,7 +340,7 @@ impl FullConfig {
     }
     // extern_file
     for extern_file in self.extern_files.iter() {
-      let path = root_dir.join(&extern_file);
+      let path = root_dir.join(extern_file);
       if path.exists() {
         let link = work_dir.join(extern_file);
         std::os::unix::fs::symlink(&path, &link).map_err(|e| {
