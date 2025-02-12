@@ -1,7 +1,8 @@
 # Cargo Regression
 
-[![pipeline](https://github.com/zao111222333/cargo-regression/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zao111222333/cargo-regression/actions/workflows/ci.yml)
+[![ci](https://github.com/zao111222333/cargo-regression/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zao111222333/cargo-regression/actions/workflows/ci.yml)
 [![crates.io](https://shields.io/crates/v/cargo-regression.svg?style=flat-square&label=crates.io)](https://crates.io/crates/cargo-regression)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 Collect test task from input files, execute them and compare results with golden.
 

@@ -1,4 +1,4 @@
-name: build
+name: ci
 
 # This should ensure that the workflow won't run on `dev-*` branches, but will
 # otherwise execute on any other branch and any pull request (including PRs
