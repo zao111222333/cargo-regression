@@ -420,7 +420,7 @@ struct Extend {
 #[test]
 fn test_parse() {
   let toml_str = r#"
-exe_path = "python"
+exe-path = "python"
 args = ["{{name}}.py", "var1", "var2"]
 envs = { k1 = "v1", k2 = "v2" }
 
@@ -429,19 +429,19 @@ args = ["var3", "var4"]
 envs = { k3 = "v3", k4 = "v4" }
 
 [assert]
-exit_code = 1
+exit-code = 1
 
 [[assert.golden]]
 file = "{{name}}.stderr"
 match = [
-  { pattern = "*err", count = 1 },
-  { pattern = "*ok", count = 2 },
+  { pattern = ".*err", count = 1 },
+  { pattern = ".*ok", count = 2 },
 ]
 
 [[assert.golden]]
 file = "{{name}}.stdout"
 match = [
-  { pattern = "*ok", count_at_least = 1 }
+  { pattern = ".*ok", count_at_least = 1 }
 ]
 
 [[assert.golden]]
