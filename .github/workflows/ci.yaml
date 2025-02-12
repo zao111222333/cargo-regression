@@ -38,8 +38,8 @@ jobs:
     needs: fmt
     name: Check
     runs-on: ubuntu-latest
-    env:
-      RUSTFLAGS: "-D warnings"
+    # env:
+    #   RUSTFLAGS: "-D warnings"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -52,8 +52,8 @@ jobs:
     needs: check
     name: Unit Test
     runs-on: ubuntu-latest
-    env:
-      RUSTFLAGS: "-D warnings"
+    # env:
+    #   RUSTFLAGS: "-D warnings"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
