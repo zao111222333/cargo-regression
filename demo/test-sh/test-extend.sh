@@ -1,0 +1,9 @@
+echo $1
+echo $2
+echo $3
+echo $4
+echo $k1
+echo $k2
+echo $k3
+echo $k4
+cat test-match.json

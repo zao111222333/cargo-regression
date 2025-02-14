@@ -1,0 +1,9 @@
+# override envs
+[extend]
+args = ["var3", "var4"]
+envs = { k3 = "v3", k4 = "v4" }
+extern-files = ["test-match.json"]
+
+[[assert.golden]]
+file = "{{name}}.stdout"
+equal = true

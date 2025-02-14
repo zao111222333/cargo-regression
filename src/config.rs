@@ -177,7 +177,11 @@ impl FullConfig {
     self.envs.entry("name".to_owned()).insert_entry(self.name.clone());
     self
       .envs
-      .entry("root_dir".to_owned())
+      .entry("extension".to_owned())
+      .insert_entry(self.extension.clone());
+    self
+      .envs
+      .entry("root-dir".to_owned())
       .insert_entry(args.root_dir_abs.to_owned());
     if let Some(goldens) = self.assert.golden.as_deref_mut() {
       for golden in goldens.iter_mut() {
