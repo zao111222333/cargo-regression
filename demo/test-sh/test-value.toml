@@ -1,0 +1,7 @@
+
+[[assert.golden]]
+file = "{{name}}.stdout"
+value = [
+  { pattern-before = 'f.*o', value = 4.0, epsilon = 0.01 },
+  { pattern-after = 'after\b', value-at-least = 1 },
+]

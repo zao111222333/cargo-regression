@@ -13,6 +13,6 @@ async fn demo() -> TestExitCode {
     .debug(true)
     .work_dir("tmp")
     .root_dir("demo")
-    .filter(&["demo/test-premit/test2.sh"]);
+    .include(&["demo/test-premit/test2.sh"]);
   args.test().await
 }

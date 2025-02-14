@@ -24,23 +24,30 @@ The tests will be exectued in `./tmp` in default, change the dir by `--work-dir 
 ``` shell
 cargo regression ./demo --extensions py sh
 ```
-+ By `__all__.toml`
++ By `xx/__all__.toml`
 ``` toml
 # override for all sub-dir
 extensions = ["py", "sh"]
 ```
 
-And the arguments `--extensions` is equivalent to set it in the most top `__all__.toml`.
-
 ### Other Configurations
-There are many other configs that hold the same behavior as `extensions`:
-| Argument | `__all__.toml` | Description |
+
+There are three types of configs:
++ `xx/__all__.toml`: Affect all task for current and all sub directory.
++ `xxx.toml`: Only affect for input task file `xxx.xx`
++ Argument: Is equivalent to set it in the most top `/__all__.toml`.
+
+The configs can inherit from upper, which means
+
+Except `extensions` can only be define in `xx/__all__.toml`, the other configs can be define in both `xx/__all__.toml` and `xxx.toml`.
+| Argument | In `xxx.toml` | Description |
 | -- | -- | -- |
 | `--exe-path bash` | `exe-path = "bash"` | The executable path to execute task |
 | `--args {{name}}.sh arg1` | `args = ["{{name}}.sh", "arg1"]` | The arguements for execute task |
-| `--permits 2` | `permits = 2` | The total permits to limit max parallelism |
+| `--permits 2` | NA | The total permits to limit max parallelism, see [more](#schedule-parallelism) |
 | `--print-errs` | `print-errs = true` | Print errors rather than save to reports |
 | NA | `ignore = true` | Ignore that task |
+| NA | `epsilon = 0.001` | The [value](#value) assert's tolerance, default is 1e-10 |
 
 ### Variable Table
 | Variable | Description |
@@ -53,40 +60,50 @@ There are many other configs that hold the same behavior as `extensions`:
 ### Test Filter
 Only test specified tasks.
 ``` shell
+# No filter
 cargo regression ./demo
-cargo regression ./demo --filter demo/trybuild/*
+# Only include demo/trybuild/*
+cargo regression ./demo --include demo/trybuild/*
+# Exclude demo/trybuild/*
+cargo regression ./demo --exclude demo/trybuild/*
+# Combined filter
+cargo regression ./demo --include demo/trybuild/* --exclude demo/trybuild/compile-ok.rs
 ```
 
 ### Schedule Parallelism
 `permits` and `permit` are virtual resource costs, you can define `permits` in arguments (default=1), and define `permit` in task toml config file (default=0).
 ``` shell
-cargo regression ./demo --filter demo/test-premit/* --permits 1
-cargo regression ./demo --filter demo/test-premit/* --permits 2
+cargo regression ./demo --include demo/test-premit/* --permits 1
+cargo regression ./demo --include demo/test-premit/* --permits 2
 ```
 
 
 ## assertion
 
 ### `exit-code`
-
 Assert the exit code, default is `0`.
+See [test-exit.toml](demo/test-py/test-exit.toml)
 ``` toml
 [assert]
 exit-code = 1
 ```
 
 ### `equal`
-The output file should equal to the golden
+The output file should equal to the golden.
+See [compile-fail.toml](demo/trybuild/compile-fail.toml)
 ``` toml
-[assert]
+[[assert.golden]]
+file = "{{name}}.stderr"
+# The task's stder' should equal to __golden__/{{name}}.stderr
 equal = true
 ```
 
 ### `match`
-
 Match pattern and assert the number (count) of it.
+See [test-match.toml](demo/test-sh/test-match.toml)
 ``` toml
 [[assert.golden]]
+# match pattern from task stdout
 file = "{{name}}.stdout"
 match = [
   # regular expression match
@@ -95,6 +112,25 @@ match = [
   { pattern = '\bfo\b', count-at-least = 1 },
   # should contain word "fo" at most once
   { pattern = '\bfo0\b', count-at-most = 1 },
+]
+```
+
+### `value`
+
+Capture float number and assert the value (count) of it.
+The epsilon is assert tolerance, if the epsilon is not defined, default epsilon is 1e-10
+See [test-value.toml](demo/test-sh/test-value.toml)
+``` toml
+[[assert.golden]]
+# match float value from task stdout
+file = "{{name}}.stdout"
+value = [
+  # match 'f.*o' and then match a float, assert it should within 4±0.01
+  { pattern-before = 'f.*o', value = 4.0, epsilon = 0.01 },
+  # match a float and then match 'after\b', assert it should > 1-0.0000000001
+  { pattern-after = 'after\b', value-at-least = 1 },
+  # math the float between 'f.*o' and 'after\b', assert it should within 4±0.0000000001
+  { pattern-before = 'f.*o', pattern-after = 'after\b', value = 4.0 }
 ]
 ```
 
@@ -114,8 +150,10 @@ async fn main() -> TestExitCode {
 }
 ```
 
+*Remind*: For fixed argument, the `include` and `exclude` variables should be all files matched by yourself,
+use `["path/A", "path/B"]` rather than `["path/*"]`.
+
 ## TODO
 + regolden
-+ assert value
-+ full config
++ full config document
 + document

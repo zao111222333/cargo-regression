@@ -11,7 +11,7 @@ use std::{
 };
 
 use crate::{
-  assert::{AssertError, DisplayErrs},
+  assert::{AssertConfig, AssertError, DisplayErrs},
   regression::{BuildError, FailedState, State},
   Args, Assert,
 };
@@ -92,6 +92,7 @@ pub(crate) struct FullConfig {
   print_errs: Source<bool>,
   pub(crate) permit: Source<u32>,
   exe_path: Source<String>,
+  epsilon: Source<f32>,
   args: Source<Vec<String>>,
   envs: Source<IndexMap<String, String>>,
   pub(crate) extensions: Source<Vec<String>>,
@@ -109,6 +110,7 @@ struct Config {
   permit: Option<u32>,
   exe_path: Option<String>,
   extensions: Option<Vec<String>>,
+  epsilon: Option<f32>,
   args: Option<Vec<String>>,
   envs: Option<IndexMap<String, String>>,
   extern_files: Option<Vec<String>>,
@@ -124,6 +126,7 @@ impl FullConfig {
     Self {
       exe_path: args.exe_path.to_owned().into(),
       print_errs: args.print_errs.into(),
+      epsilon: 1e-10.into(),
       args: args.args.iter().map(ToString::to_string).collect::<Vec<_>>().into(),
       extensions: args
         .extensions
@@ -198,6 +201,9 @@ impl FullConfig {
     }
     if let Some(print_errs) = config.print_errs {
       self.print_errs = (print_errs, config_path, debug).into();
+    }
+    if let Some(epsilon) = config.epsilon {
+      self.epsilon = (epsilon, config_path, debug).into();
     }
     if let Some(extensions) = config.extensions {
       self.extensions = (extensions, config_path, debug).into();
@@ -409,14 +415,24 @@ impl FullConfig {
   async fn assert(self, root_dir: &Path, work_dir: PathBuf) -> Vec<AssertError> {
     match self.exe(&work_dir) {
       Ok(output) => {
+        let assert_config = self.assert_config();
         self
           .assert
           .inner
-          .assert(self.name, work_dir, root_dir.join("__golden__"), Arc::new(output))
+          .assert(
+            assert_config,
+            self.name,
+            work_dir,
+            root_dir.join("__golden__"),
+            Arc::new(output),
+          )
           .await
       }
       Err(e) => vec![e],
     }
+  }
+  fn assert_config(&self) -> AssertConfig {
+    AssertConfig { epsilon: *self.epsilon }
   }
 }
 

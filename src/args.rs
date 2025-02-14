@@ -24,7 +24,8 @@ pub struct Args {
   // TODO: use static hashset
   pub(crate) extensions: &'static [&'static str],
   // TODO: use static hashset
-  pub(crate) filter: &'static [&'static str],
+  pub(crate) include: &'static [&'static str],
+  pub(crate) exclude: &'static [&'static str],
 }
 
 #[derive(Debug, Parser)]
@@ -43,8 +44,10 @@ struct ArgsBuilder {
   args: Vec<String>,
   #[clap(long, help="Default input extensions(s)", num_args = 1..)]
   extensions: Vec<String>,
-  #[clap(long, help="Input filter. E.g., --filter ./cases/*", default_value = None, num_args = 1..)]
-  filter: Vec<String>,
+  #[clap(long, help="Input include. E.g., --include ./cases/*", default_value = None, num_args = 1..)]
+  include: Vec<String>,
+  #[clap(long, help="Input exclude. E.g., --exclude ./cases/*", default_value = None, num_args = 1..)]
+  exclude: Vec<String>,
   #[clap(long, help = "Total permits to limit max parallelism", default_value_t = 1)]
   permits: u32,
   #[clap(long, default_value_t = String::from("./tmp"))]
@@ -72,7 +75,8 @@ impl Args {
       root_dir: "",
       root_dir_abs: "",
       extensions: &[],
-      filter: &[],
+      include: &[],
+      exclude: &[],
     }
   }
   pub(crate) fn rebuild(mut self) -> Result<Self, BuildError> {
@@ -82,7 +86,14 @@ impl Args {
         .display()
         .to_string(),
     );
-    self.filter = leak_string_vec_res(self.filter.iter().map(|path| {
+    self.include = leak_string_vec_res(self.include.iter().map(|path| {
+      let path = PathBuf::from(path);
+      match std::fs::canonicalize(&path) {
+        Ok(p) => Ok(p.display().to_string()),
+        Err(e) => Err(BuildError::ReadDir(PathBuf::from(&path), e)),
+      }
+    }))?;
+    self.exclude = leak_string_vec_res(self.exclude.iter().map(|path| {
       let path = PathBuf::from(path);
       match std::fs::canonicalize(&path) {
         Ok(p) => Ok(p.display().to_string()),
@@ -111,20 +122,31 @@ impl Args {
       .debug(builder.debug)
       .args(leak_string_vec(builder.args))
       .extensions(leak_string_vec(builder.extensions))
-      .filter(leak_string_vec(builder.filter))
+      .include(leak_string_vec(builder.include))
+      .exclude(leak_string_vec(builder.exclude))
       .work_dir(leak_string(builder.work_dir))
       .root_dir(leak_string(builder.root_dir))
   }
-  pub(super) fn filtered(&self, file: &Path) -> Result<bool, BuildError> {
-    if self.filter.is_empty() {
-      Ok(false)
+  fn included(&self, file_abs: &String) -> bool {
+    if self.include.is_empty() {
+      true
     } else {
-      let file_abs = std::fs::canonicalize(file)
-        .map_err(|e| BuildError::ReadDir(PathBuf::from(&file), e))?
-        .display()
-        .to_string();
-      Ok(!self.filter.iter().any(|pattern| *pattern == file_abs))
+      self.include.iter().any(|pattern| *pattern == file_abs)
     }
+  }
+  fn excluded(&self, file_abs: &String) -> bool {
+    if self.exclude.is_empty() {
+      false
+    } else {
+      self.exclude.iter().any(|pattern| *pattern == file_abs)
+    }
+  }
+  pub(super) fn filtered(&self, file: &Path) -> Result<bool, BuildError> {
+    let file_abs = std::fs::canonicalize(file)
+      .map_err(|e| BuildError::ReadDir(PathBuf::from(&file), e))?
+      .display()
+      .to_string();
+    Ok(!self.included(&file_abs) || self.excluded(&file_abs))
   }
 }
 
