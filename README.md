@@ -29,6 +29,8 @@ The tests will be exectued in `./tmp` in default, change the directory by `--wor
 | `--workdir xxx`| Change the directory to perform test |
 | `--permits 2`| Set total permits to manage parallelism, see [`schedule-parallelism`](#schedule-parallelism) |
 | `--debug`| Show debug information & config files |
+| `--include demo/trybuild/*`| Set include [`filter`](#test-filter), default is none |
+| `--exclude demo/trybuild/*`| Set exclude [`filter`](#test-filter), default is none |
 
 
 ### Set Extension(s)
