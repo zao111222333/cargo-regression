@@ -23,7 +23,8 @@ jobs:
         run: cargo build --release --target x86_64-unknown-linux-musl --examples
       - name: Prepare files
         run: |
-          mv target/x86_64-unknown-linux-musl/release/examples/app examples/regression
+          mv target/x86_64-unknown-linux-musl/release/examples/regression examples/regression
+          rm -rf examples/fix_args.rs
           mv demo examples/demo
           zip -r examples.zip examples
       - name: Upload to Release
