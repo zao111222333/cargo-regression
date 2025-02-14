@@ -250,8 +250,7 @@ impl Golden {
     let stdout_name = format!("{name}.stdout");
     let stderr_name = format!("{name}.stderr");
     let golden = read(golden_dir.join(&self.file));
-    let golden_str =
-      if let Some(golden) = &golden { Some(golden.as_str()) } else { None };
+    let golden_str = golden.as_ref().map(|golden| golden.as_str());
     if self.file == stdout_name {
       match core::str::from_utf8(&output.stdout) {
         Ok(output) => self.assert(config, &stdout_name, golden_str, output, &mut errs),
@@ -260,12 +259,12 @@ impl Golden {
     } else if self.file == stderr_name {
       match core::str::from_utf8(&output.stderr) {
         Ok(output) => self.assert(config, &stderr_name, golden_str, output, &mut errs),
-        Err(_) => errs.push(AssertError::Stdout),
+        Err(_) => errs.push(AssertError::Stderr),
       }
     } else {
       match read(work_dir.join(&self.file)) {
         Some(output) => self.assert(config, &stderr_name, golden_str, &output, &mut errs),
-        None => errs.push(AssertError::UnableToRead(self.file.into())),
+        None => errs.push(AssertError::UnableToRead(self.file)),
       }
     }
     errs
