@@ -7,13 +7,17 @@
 Collect test task from input files, execute them and compare results with golden.
 
 ## Usage
+
 ``` shell
 cargo install cargo-regression
 ```
+
 Build your test files like [./demo](./demo), then
+
 ``` shell
 cargo regression ./demo --debug
 ```
+
 ![](screenshot.svg)
 
 The tests will be exectued in `./tmp` in default, change the directory by `--work-dir`. All arguments:
@@ -26,6 +30,7 @@ The tests will be exectued in `./tmp` in default, change the directory by `--wor
 
 
 ### Set Extension(s)
+
 `cargo-regression` will collect all files that match extensions as test tasks, you can set extensions in two ways:
 + By commmand arguments
 ``` shell
@@ -66,7 +71,7 @@ There are a few keywords that will be replaced into its values, for all configs.
 
 ### Extend Config
 
-In default the configs will be override after you define them in `xxx.toml`. But for `args`, `envs`, and `extern-files`, you can extend them base on the super's configs. See [test-extend.toml](demo/test-sh/test-extend.toml)
+In default the configs will be override after you define them in `xxx.toml`. But for `args`, `envs`, and `extern-files`, you can extend them base on the super's configs. See [`test-extend.toml`](demo/test-sh/test-extend.toml)
 
 ## Advanced Features
 ### Test Filter
@@ -83,7 +88,7 @@ cargo regression ./demo --include demo/trybuild/* --exclude demo/trybuild/compil
 ```
 
 ### Schedule Parallelism
-`permits` and `permit` are virtual resource costs, you can define `permits` in arguments (default=1), and define `permit` in task toml config file (default=0).
+`permits` and `permit` are virtual resource costs, you can define `permits` in arguments (default=1), and define `permit` in task toml config file (default=0). See [`test-premit`](demo/test-premit)
 ``` shell
 cargo regression ./demo --include demo/test-premit/* --permits 1
 cargo regression ./demo --include demo/test-premit/* --permits 2
@@ -103,6 +108,7 @@ exit-code = 1
 ### `equal`
 The output file should equal to the golden.
 See [`compile-fail.toml`](demo/trybuild/compile-fail.toml)
+
 ``` toml
 [[assert.golden]]
 file = "{{name}}.stderr"
@@ -111,8 +117,10 @@ equal = true
 ```
 
 ### `match`
+
 Match pattern and assert the number (count) of it.
 See [`test-match.toml`](demo/test-sh/test-match.toml)
+
 ``` toml
 [[assert.golden]]
 # match pattern from task stdout
@@ -132,6 +140,7 @@ match = [
 Capture float number and assert the value (count) of it.
 The epsilon is assert tolerance, if the epsilon is not defined, default epsilon is 1e-10
 See [`test-value.toml`](demo/test-sh/test-value.toml)
+
 ``` toml
 [[assert.golden]]
 # match float value from task stdout
