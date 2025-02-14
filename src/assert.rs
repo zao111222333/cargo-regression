@@ -1,6 +1,13 @@
 use core::fmt;
 use std::{
-  cmp::Ordering, fmt::Display, fs::read_to_string, io, ops::Deref, path::{Path, PathBuf}, process::Output, sync::Arc
+  cmp::Ordering,
+  fmt::Display,
+  fs::read_to_string,
+  io,
+  ops::Deref,
+  path::{Path, PathBuf},
+  process::Output,
+  sync::Arc,
 };
 
 use serde::{Deserialize, Deserializer, Serialize};
@@ -294,11 +301,8 @@ impl fmt::Display for TextDiffs {
             sign,
           )?;
           for (emphasized, value) in change.iter_strings_lossy() {
-            if emphasized {
-              write!(f, "{}", value)?;
-            } else {
-              write!(f, "{}", value)?;
-            }
+            _ = emphasized;
+            write!(f, "{}", value)?;
           }
           if change.missing_newline() {
             writeln!(f)?;
@@ -380,7 +384,7 @@ impl fmt::Display for MatchReport {
       self.matches.len()
     )?;
     for (idx, (line, res)) in self.matches.iter().enumerate() {
-      writeln!(f, "  #{} at line {line}: {res:?}", idx+1)?;
+      writeln!(f, "  #{} at line {line}: {res:?}", idx + 1)?;
     }
     Ok(())
   }

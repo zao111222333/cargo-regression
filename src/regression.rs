@@ -197,8 +197,14 @@ async fn walk(
     read_dir.into_iter().partition_map(|entry| {
       let path = entry.unwrap().path();
       if path.is_dir() {
-        let current_config = current_config.clone();
-        Either::Left(tokio::spawn(async move { walk(current_config, path, args).await }))
+        if path.file_name().unwrap() == "__golden__" {
+          Either::Left(None)
+        } else {
+          let current_config = current_config.clone();
+          Either::Left(Some(tokio::spawn(async move {
+            walk(current_config, path, args).await
+          })))
+        }
       } else {
         Either::Right(path)
       }
@@ -245,7 +251,7 @@ async fn walk(
       }
     })
     .collect::<Vec<_>>();
-  for f in sub_dir_futures.into_iter() {
+  for f in sub_dir_futures.into_iter().flatten() {
     match f.await.expect("join handle") {
       Ok(res) => file_configs.extend(res),
       Err(e) => errs.extend(e),

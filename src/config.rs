@@ -291,7 +291,7 @@ impl FullConfig {
         let err_report = work_dir.join(format!("{name}.report"));
         match tokio::fs::write(&err_report, DisplayErrs(&errs).to_string()).await {
           Ok(_) => FailedState::ReportSaved(err_report),
-          Err(e) => FailedState::NoReport(path.to_path_buf(),{
+          Err(e) => FailedState::NoReport(path.to_path_buf(), {
             errs.push(AssertError::Write(err_report.display().to_string(), e));
             errs
           }),
@@ -363,20 +363,19 @@ impl FullConfig {
     for entry in root_dir
       .read_dir()
       .map_err(|e| AssertError::UnableToReadDir(root_dir.display().to_string(), e))?
+      .flatten()
     {
-      if let Ok(entry) = entry {
-        let full_name = entry.file_name();
-        if full_name.to_str().unwrap_or("").starts_with(&self.name) {
-          let original = entry.path();
-          let link = work_dir.join(full_name);
-          std::os::unix::fs::symlink(&original, &link).map_err(|e| {
-            AssertError::LinkFile(
-              original.display().to_string(),
-              link.display().to_string(),
-              e,
-            )
-          })?;
-        }
+      let full_name = entry.file_name();
+      if full_name.to_str().unwrap_or("").starts_with(&self.name) {
+        let original = entry.path();
+        let link = work_dir.join(full_name);
+        std::os::unix::fs::symlink(&original, &link).map_err(|e| {
+          AssertError::LinkFile(
+            original.display().to_string(),
+            link.display().to_string(),
+            e,
+          )
+        })?;
       }
     }
     Ok(())
