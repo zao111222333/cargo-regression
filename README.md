@@ -12,11 +12,13 @@ Collect test task from input files, execute them and compare results with golden
 cargo install cargo-regression
 ```
 
-Build your test files like [./demo](./demo), then
+Build your test files like [`./demo`](./demo), then
 
 ``` shell
 cargo regression ./demo --debug
 ```
+
+Or you can download the [`latest/examples.zip`](https://github.com/zao111222333/cargo-regression/releases/latest/download/examples_x86_64-unknown-linux-musl.zip), and call `./regression` instead of `cargo regression`.
 
 ![](screenshot.svg)
 
