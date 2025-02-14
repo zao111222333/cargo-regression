@@ -89,6 +89,7 @@ pub(crate) struct FullConfig {
   filtered: bool,
   #[serde(skip)]
   ignore: Source<bool>,
+  print_errs: Source<bool>,
   pub(crate) permit: Source<u32>,
   exe_path: Source<String>,
   args: Source<Vec<String>>,
@@ -104,6 +105,7 @@ pub(crate) struct FullConfig {
 #[serde(rename_all = "kebab-case")]
 struct Config {
   ignore: Option<bool>,
+  print_errs: Option<bool>,
   permit: Option<u32>,
   exe_path: Option<String>,
   extensions: Option<Vec<String>>,
@@ -121,6 +123,7 @@ impl FullConfig {
   pub(crate) fn new(args: Args) -> Self {
     Self {
       exe_path: args.exe_path.to_owned().into(),
+      print_errs: args.print_errs.into(),
       args: args.args.iter().map(ToString::to_string).collect::<Vec<_>>().into(),
       extensions: args
         .extensions
@@ -193,6 +196,9 @@ impl FullConfig {
     if let Some(ignore) = config.ignore {
       self.ignore = (ignore, config_path, debug).into();
     }
+    if let Some(print_errs) = config.print_errs {
+      self.print_errs = (print_errs, config_path, debug).into();
+    }
     if let Some(extensions) = config.extensions {
       self.extensions = (extensions, config_path, debug).into();
     }
@@ -241,6 +247,7 @@ impl FullConfig {
     if *self.ignore {
       return State::Ignored;
     }
+    let print_errs = *self.print_errs;
     let root_dir = path.parent().unwrap();
     let path_str = path.display().to_string();
     let work_dir = PathBuf::from(args.work_dir).join(
@@ -278,14 +285,19 @@ impl FullConfig {
     if errs.is_empty() {
       State::Ok
     } else {
-      let err_report = work_dir.join(format!("{name}.err.log"));
-      match tokio::fs::write(&err_report, DisplayErrs(&errs).to_string()).await {
-        Ok(_) => State::Failed(Some(FailedState::ReportSaved(err_report))),
-        Err(e) => State::Failed(Some(FailedState::NoReport({
-          errs.push(AssertError::Write(err_report.display().to_string(), e));
-          errs
-        }))),
-      }
+      let failed_state = if print_errs {
+        FailedState::NoReport(path.to_path_buf(), errs)
+      } else {
+        let err_report = work_dir.join(format!("{name}.report"));
+        match tokio::fs::write(&err_report, DisplayErrs(&errs).to_string()).await {
+          Ok(_) => FailedState::ReportSaved(err_report),
+          Err(e) => FailedState::NoReport(path.to_path_buf(),{
+            errs.push(AssertError::Write(err_report.display().to_string(), e));
+            errs
+          }),
+        }
+      };
+      State::Failed(Some(failed_state))
     }
   }
   #[inline]

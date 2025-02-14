@@ -12,6 +12,7 @@ use crate::regression::BuildError;
 pub struct Args {
   pub(crate) debug: bool,
   pub(crate) regolden: bool,
+  pub(crate) print_errs: bool,
   /// to schedule tasks, default is 1
   pub(crate) permits: u32,
   pub(crate) exe_path: &'static str,
@@ -34,6 +35,8 @@ struct ArgsBuilder {
   debug: bool,
   #[clap(long, help = "Regolden mode flag")]
   regolden: bool,
+  #[clap(long, help = "Print errors [default: false, save errs to report]")]
+  print_errs: bool,
   #[clap(long, help = "Default executable path")]
   exe_path: Option<String>,
   #[clap(long, help = "Default arguements", num_args = 1..)]
@@ -60,6 +63,7 @@ impl Args {
   pub const fn new() -> Self {
     Self {
       debug: false,
+      print_errs: false,
       regolden: false,
       permits: 1,
       exe_path: "",
@@ -103,6 +107,7 @@ impl Args {
     args
       .permits(builder.permits)
       .regolden(builder.regolden)
+      .print_errs(builder.print_errs)
       .debug(builder.debug)
       .args(leak_string_vec(builder.args))
       .extensions(leak_string_vec(builder.extensions))

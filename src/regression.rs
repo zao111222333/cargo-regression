@@ -39,7 +39,7 @@ pub enum BuildError {
 
 pub(crate) enum FailedState {
   ReportSaved(PathBuf),
-  NoReport(Vec<AssertError>),
+  NoReport(PathBuf, Vec<AssertError>),
 }
 pub(crate) enum State {
   Ok,
@@ -52,10 +52,10 @@ impl fmt::Display for FailedState {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       Self::ReportSaved(report) => {
-        write!(f, "report: {}", report.display())
+        write!(f, "\n     report: {}", report.display())
       }
-      Self::NoReport(errs) => {
-        write!(f, "errs:\n{}", DisplayErrs(errs))
+      Self::NoReport(input, errs) => {
+        write!(f, "\n----------- {} -----------\n{}", input.display(), DisplayErrs(errs))
       }
     }
   }
@@ -64,10 +64,7 @@ impl fmt::Display for State {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       Self::Ok => write!(f, "\x1B[32mok\x1B[0m"),
-      Self::Failed(None) => write!(f, "\x1B[31mFAILED\x1B[0m"),
-      Self::Failed(Some(fail)) => {
-        write!(f, "\x1B[31mFAILED\x1B[0m\n     {fail}")
-      }
+      Self::Failed(_) => write!(f, "\x1B[31mFAILED\x1B[0m"),
       Self::Ignored => write!(f, "\x1B[33mignored\x1B[0m"),
       Self::FilteredOut => write!(f, "\x1B[2mfiltered out\x1B[0m"),
     }
@@ -92,11 +89,11 @@ impl Termination for TestExitCode {
           println!("test result: {}. {count_ok} passed; 0 failed; {count_ignored} ignored; {count_filtered} filtered out; finished in {time:.2}s", State::Ok);
           ExitCode::SUCCESS
         } else {
-          println!("\nfailures:");
+          print!("\nfailures:");
           for failed in &faileds {
-            println!("     {failed}");
+            print!("{failed}");
           }
-          println!("\ntest result: {}. {count_ok} passed; {} failed; {count_ignored} ignored; {count_filtered} filtered out; finished in {time:.2}s", State::Failed(None), faileds.len());
+          println!("\n\ntest result: {}. {count_ok} passed; {} failed; {count_ignored} ignored; {count_filtered} filtered out; finished in {time:.2}s", State::Failed(None), faileds.len());
           ExitCode::FAILURE
         }
       }

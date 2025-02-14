@@ -1,12 +1,6 @@
 use core::fmt;
 use std::{
-  fmt::Display,
-  fs::read_to_string,
-  io,
-  ops::Deref,
-  path::{Path, PathBuf},
-  process::Output,
-  sync::Arc,
+  cmp::Ordering, fmt::Display, fs::read_to_string, io, ops::Deref, path::{Path, PathBuf}, process::Output, sync::Arc
 };
 
 use serde::{Deserialize, Deserializer, Serialize};
@@ -66,7 +60,7 @@ pub(crate) struct DisplayErrs<'a, E: fmt::Display>(pub(crate) &'a Vec<E>);
 impl<E: fmt::Display> fmt::Display for DisplayErrs<'_, E> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     for err in self.0 {
-      writeln!(f, "ERROR {err}")?;
+      writeln!(f, "{err}")?;
     }
     Ok(())
   }
@@ -209,6 +203,8 @@ pub struct Value {
   pattern_after: Option<PatternMatch>,
   value: f64,
   epsilon: Option<f64>,
+  larger: Option<bool>,
+  less: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -384,7 +380,7 @@ impl fmt::Display for MatchReport {
       self.matches.len()
     )?;
     for (idx, (line, res)) in self.matches.iter().enumerate() {
-      writeln!(f, "  #{idx} at line {line}: {res:?}")?;
+      writeln!(f, "  #{} at line {line}: {res:?}", idx+1)?;
     }
     Ok(())
   }
@@ -393,7 +389,7 @@ impl fmt::Display for MatchReport {
 impl AssertT for Match {
   fn assert(&self, file_name: &str, _: &str, output: &str, errs: &mut Vec<AssertError>) {
     let mut last_bgn = 0;
-    let mut last_line = 0;
+    let mut last_line = 1;
     let matches: Vec<(usize, String)> = self
       .pattern
       .find_iter(output)

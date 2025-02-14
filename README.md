@@ -39,6 +39,7 @@ There are many other configs that hold the same behavior as `extensions`:
 | `--exe-path bash` | `exe-path = "bash"` | The executable path to execute task |
 | `--args {{name}}.sh arg1` | `args = ["{{name}}.sh", "arg1"]` | The arguements for execute task |
 | `--permits 2` | `permits = 2` | The total permits to limit max parallelism |
+| `--print-errs` | `print-errs = true` | Print errors rather than save to reports |
 | NA | `ignore = true` | Ignore that task |
 
 ### Variable Table
