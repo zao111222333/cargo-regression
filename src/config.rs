@@ -8,6 +8,7 @@ use std::{
   path::{Path, PathBuf},
   process::{Command, Output},
   sync::Arc,
+  time::Instant,
 };
 
 use crate::{
@@ -271,15 +272,14 @@ impl FullConfig {
         }
       },
     );
+    let now = Instant::now();
     let name = self.name.clone();
     let mut errs = if let Err(e) = self.prepare_dir(root_dir, &work_dir) {
       vec![e]
     } else {
       let toml_str = if args.debug { self.to_toml() } else { String::new() };
       let debug_config = work_dir.join(format!("__debug__.{name}.toml"));
-      let work_dir_clone = work_dir.clone();
-      // FIXME
-      let task_future = async move { self.assert(root_dir, work_dir_clone).await };
+      let task_future = self.assert(root_dir, work_dir.clone());
       let debug_futures = async move {
         if args.debug {
           tokio::fs::write(debug_config, toml_str).await
@@ -291,7 +291,7 @@ impl FullConfig {
       errs
     };
     if errs.is_empty() {
-      State::Ok
+      State::Ok(Some(now.elapsed()))
     } else {
       let failed_state = if print_errs {
         FailedState::NoReport(path.to_path_buf(), errs)
@@ -305,7 +305,7 @@ impl FullConfig {
           }),
         }
       };
-      State::Failed(Some(failed_state))
+      State::Failed(Some((failed_state, now.elapsed())))
     }
   }
   #[inline]

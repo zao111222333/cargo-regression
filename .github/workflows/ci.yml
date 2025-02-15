@@ -22,9 +22,8 @@ jobs:
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
-    # TODO remove all warnings
-    # env:
-    #   RUSTFLAGS: "-D warnings"
+    env:
+      RUSTFLAGS: "-D warnings"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -38,8 +37,8 @@ jobs:
     needs: fmt
     name: Check
     runs-on: ubuntu-latest
-    # env:
-    #   RUSTFLAGS: "-D warnings"
+    env:
+      RUSTFLAGS: "-D warnings"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -52,8 +51,8 @@ jobs:
     needs: check
     name: Unit Test
     runs-on: ubuntu-latest
-    # env:
-    #   RUSTFLAGS: "-D warnings"
+    env:
+      RUSTFLAGS: "-D warnings"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -69,8 +68,8 @@ jobs:
     needs: check
     name: Clippy
     runs-on: ubuntu-latest
-    # env:
-      # RUSTFLAGS: "-D warnings -A clippy::todo"
+    env:
+      RUSTFLAGS: "-D warnings -A clippy::todo"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

@@ -4,7 +4,7 @@ use std::{
   path::PathBuf,
   process::{ExitCode, Termination},
   sync::Arc,
-  time::Instant,
+  time::{Duration, Instant},
 };
 
 use itertools::{Either, Itertools};
@@ -40,8 +40,8 @@ pub(crate) enum FailedState {
   NoReport(PathBuf, Vec<AssertError>),
 }
 pub(crate) enum State {
-  Ok,
-  Failed(Option<FailedState>),
+  Ok(Option<Duration>),
+  Failed(Option<(FailedState, Duration)>),
   Ignored,
   FilteredOut,
 }
@@ -61,8 +61,12 @@ impl fmt::Display for FailedState {
 impl fmt::Display for State {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      Self::Ok => write!(f, "\x1B[32mok\x1B[0m"),
-      Self::Failed(_) => write!(f, "\x1B[31mFAILED\x1B[0m"),
+      Self::Ok(None) => write!(f, "\x1B[32mok\x1B[0m"),
+      Self::Ok(Some(time)) => write!(f, "{:.2}s \x1B[32mok\x1B[0m", time.as_secs_f32()),
+      Self::Failed(Some((_, time))) => {
+        write!(f, "{:.2}s \x1B[31mFAILED\x1B[0m", time.as_secs_f32())
+      }
+      Self::Failed(None) => write!(f, "\x1B[31mFAILED\x1B[0m"),
       Self::Ignored => write!(f, "\x1B[33mignored\x1B[0m"),
       Self::FilteredOut => write!(f, "\x1B[2mfiltered out\x1B[0m"),
     }
@@ -84,7 +88,7 @@ impl Termination for TestExitCode {
     match self.0 {
       Ok(TestResult { count_ok, count_ignored, count_filtered, faileds }) => {
         if faileds.is_empty() {
-          println!("test result: {}. {count_ok} passed; 0 failed; {count_ignored} ignored; {count_filtered} filtered out; finished in {time:.2}s", State::Ok);
+          println!("test result: {}. {count_ok} passed; 0 failed; {count_ignored} ignored; {count_filtered} filtered out; finished in {time:.2}s", State::Ok(None));
           ExitCode::SUCCESS
         } else {
           print!("\nfailures:");
@@ -159,9 +163,9 @@ async fn _test(args: Args) -> Result<TestResult, Vec<BuildError>> {
   // TODO: iter
   for handle in handles {
     match handle.await.unwrap() {
-      State::Ok => count_ok += 1,
-      State::Failed(Some(failed)) => faileds.push(failed),
-      State::Failed(None) => unreachable!(),
+      State::Ok(Some(_)) => count_ok += 1,
+      State::Failed(Some((failed, _))) => faileds.push(failed),
+      State::Ok(None) | State::Failed(None) => unreachable!(),
       State::Ignored => count_ignored += 1,
       State::FilteredOut => count_filtered += 1,
     }

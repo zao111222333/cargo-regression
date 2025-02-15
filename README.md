@@ -48,6 +48,7 @@ extensions = ["py", "sh"]
 
 ### Other Config
 
+The full configs demo is [`demo/full.toml`](demo/full.toml).
 Except `extensions` can only be define in `xx/__all__.toml`, the other configs can be define in both `xx/__all__.toml` and `xxx.toml`.
 There are three types of configs:
 + `xx/__all__.toml`: Affect all task for current and all sub directories
@@ -177,7 +178,3 @@ See more in [`./examples`](./examples)
 
 *Remind*: For fixed argument, the `include` and `exclude` variables should be all files matched by yourself,
 use `["path/A", "path/B"]` rather than `["path/*"]`.
-
-## TODO
-+ full config document
-+ document

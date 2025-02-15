@@ -1,0 +1,56 @@
+# Ignore that task
+ignore = false
+# only in 'xxx/__all__.toml'
+# define the task identifier extensions for all sub-dir
+extensions = ["py", "sh"]
+# The executable path to execute task
+exe-path = "bash"
+# The arguements for execute task
+args = ["{{name}}.{{extension}}", "arg1"]
+# The environment variables
+envs = { k1 = "v1", k2 = "v2" }
+# In defualt only {{name}}* files will be linked to work dir, 
+# use this to link other files
+extern-files = ["data.json"]
+# The value assert's tolerance, default is 1e-10
+epsilon = 0.001
+
+# In default, the configs will be override after you define them
+# in `xxx.toml`. 
+# But for `args`, `envs`, and `extern-files`, you can extend them 
+# base on the super's configs
+[extend]
+args = ["var3", "var4"]
+envs = { k3 = "v3", k4 = "v4" }
+extern-files = ["test-match.json"]
+
+[assert]
+# Assert the exit code, default is `0`.
+exit-code = 1
+
+[[assert.golden]]
+file = "{{name}}.stderr"
+# The output file (stder) should equal to the golden (__golden__/{{name}}.stderr)
+equal = true
+# Match pattern and assert the number (count) of it.
+match = [
+  # regular expression match
+  { pattern = 'f.*o', count = 4 },
+  # should contain word "fo" at least once
+  { pattern = '\bfo\b', count-at-least = 1 },
+  # should contain word "fo" at most once
+  { pattern = '\bfo0\b', count-at-most = 1 },
+]
+
+[[assert.golden]]
+# Capture float number and assert the value (count) of it.
+# The epsilon is assert tolerance, if the epsilon is not defined, default epsilon is 1e-10
+file = "{{name}}.stdout"
+value = [
+  # match 'f.*o' and then match a float, assert it should within 4±0.01
+  { pattern-before = 'f.*o', value = 4.0, epsilon = 0.01 },
+  # match a float and then match 'after\b', assert it should > 1-0.0000000001
+  { pattern-after = 'after\b', value-at-least = 1 },
+  # math the float between 'f.*o' and 'after\b', assert it should within 4±0.0000000001
+  { pattern-before = 'f.*o', pattern-after = 'after\b', value = 4.0 }
+]

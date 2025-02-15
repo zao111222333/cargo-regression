@@ -175,7 +175,7 @@ pub struct Golden {
 }
 
 impl Golden {
-  fn validate(&self) -> Result<(), impl Display> {
+  fn _validate(&self) -> Result<(), impl Display> {
     if self.equal.is_none() && self.r#match.is_none() && self.value.is_none() {
       return Err(format!("no assert for file \"{}\"", self.file));
     }
