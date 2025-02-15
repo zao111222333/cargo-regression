@@ -250,7 +250,7 @@ impl Golden {
     let stdout_name = format!("{name}.stdout");
     let stderr_name = format!("{name}.stderr");
     let golden = read(golden_dir.join(&self.file));
-    let golden_str = golden.as_ref().map(|golden| golden.as_str());
+    let golden_str = golden.as_deref();
     if self.file == stdout_name {
       match core::str::from_utf8(&output.stdout) {
         Ok(output) => self.assert(config, &stdout_name, golden_str, output, &mut errs),

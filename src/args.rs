@@ -9,7 +9,6 @@ use crate::regression::BuildError;
 #[derive(Debug, Clone, Copy)]
 pub struct Args {
   pub(crate) debug: bool,
-  pub(crate) regolden: bool,
   pub(crate) print_errs: bool,
   /// to schedule tasks, default is 1
   pub(crate) permits: u32,
@@ -32,8 +31,6 @@ pub struct Args {
 struct ArgsBuilder {
   #[clap(long, help = "Debug mode flag, recommended")]
   debug: bool,
-  #[clap(long, help = "Regolden mode flag")]
-  regolden: bool,
   #[clap(long, help = "Print errors [default: false, save errs to report]")]
   print_errs: bool,
   #[clap(long, help = "Default executable path")]
@@ -63,10 +60,6 @@ impl Default for Args {
 impl Args {
   pub const fn debug(mut self) -> Self {
     self.debug = true;
-    self
-  }
-  pub const fn regolden(mut self) -> Self {
-    self.regolden = true;
     self
   }
   pub const fn print_errs(mut self) -> Self {
@@ -109,7 +102,6 @@ impl Args {
     Self {
       debug: false,
       print_errs: false,
-      regolden: false,
       permits: 1,
       exe_path: "",
       args: &[],
@@ -151,7 +143,6 @@ impl Args {
     let builder = ArgsBuilder::parse_from(itr);
     Args {
       debug: builder.debug,
-      regolden: builder.regolden,
       print_errs: builder.print_errs,
       permits: builder.permits,
       exe_path: builder.exe_path.map_or("", leak_string),

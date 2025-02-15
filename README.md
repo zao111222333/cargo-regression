@@ -179,6 +179,5 @@ See more in [`./examples`](./examples)
 use `["path/A", "path/B"]` rather than `["path/*"]`.
 
 ## TODO
-+ regolden
 + full config document
 + document

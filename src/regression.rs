@@ -33,8 +33,6 @@ pub enum BuildError {
   CleanDir(PathBuf, io::Error),
   #[error("input extensions can not contains 'toml'")]
   InputExtToml,
-  #[error("This is regolden mode, all test case will pass!")]
-  Regolden,
 }
 
 pub(crate) enum FailedState {
@@ -121,9 +119,6 @@ impl Args {
   }
 }
 async fn _test(args: Args) -> Result<TestResult, Vec<BuildError>> {
-  if args.regolden {
-    // args.root_dir
-  }
   let f1 = async move {
     if args.work_dir.exists() {
       remove_dir_all(&args.work_dir)
@@ -172,9 +167,6 @@ async fn _test(args: Args) -> Result<TestResult, Vec<BuildError>> {
     }
   }
   scheduler.close();
-  if args.regolden {
-    return Err(vec![BuildError::Regolden]);
-  }
   Ok(TestResult { count_ok, count_ignored, count_filtered, faileds })
 }
 

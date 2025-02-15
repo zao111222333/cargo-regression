@@ -278,13 +278,8 @@ impl FullConfig {
       let toml_str = if args.debug { self.to_toml() } else { String::new() };
       let debug_config = work_dir.join(format!("__debug__.{name}.toml"));
       let work_dir_clone = work_dir.clone();
-      let task_future = async move {
-        if args.regolden {
-          self.regolden(root_dir, work_dir_clone).await
-        } else {
-          self.assert(root_dir, work_dir_clone).await
-        }
-      };
+      // FIXME
+      let task_future = async move { self.assert(root_dir, work_dir_clone).await };
       let debug_futures = async move {
         if args.debug {
           tokio::fs::write(debug_config, toml_str).await
@@ -410,14 +405,6 @@ impl FullConfig {
           e,
         )
       })
-  }
-  #[inline]
-  // before regolden, check if there is uncommit file
-  async fn regolden(self, root_dir: &Path, work_dir: PathBuf) -> Vec<AssertError> {
-    // get all hash for current dir
-    // let output = self.exe(&work_dir);
-    // root_dir.join("__regolden__");
-    todo!()
   }
   #[inline]
   async fn assert(self, root_dir: &Path, work_dir: PathBuf) -> Vec<AssertError> {
