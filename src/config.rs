@@ -161,7 +161,7 @@ impl FullConfig {
     let eval_str = |s: &mut String| -> Result<(), BuildError> {
       *s = s.replace("{{extension}}", &self.extension);
       *s = s.replace("{{name}}", &self.name);
-      *s = s.replace("{{root-dir}}", args.root_dir_abs);
+      *s = s.replace("{{root-dir}}", args.root_dir_abs.to_str().unwrap());
       Ok(())
     };
     eval_str(&mut self.exe_path)?;
@@ -182,7 +182,7 @@ impl FullConfig {
     self
       .envs
       .entry("root-dir".to_owned())
-      .insert_entry(args.root_dir_abs.to_owned());
+      .insert_entry(args.root_dir_abs.display().to_string());
     if let Some(goldens) = self.assert.golden.as_deref_mut() {
       for golden in goldens.iter_mut() {
         eval_str(&mut golden.file)?;
@@ -260,12 +260,15 @@ impl FullConfig {
     let print_errs = *self.print_errs;
     let root_dir = path.parent().unwrap();
     let path_str = path.display().to_string();
-    let work_dir = PathBuf::from(args.work_dir).join(
+    let work_dir = args.work_dir.join(
       // remove the root of root_dir
-      if path_str.starts_with(args.root_dir) {
-        &path_str[args.root_dir.len() + 1..]
-      } else {
-        &path_str
+      {
+        let root_dir = args.root_dir.to_str().unwrap();
+        if path_str.starts_with(root_dir) {
+          &path_str[root_dir.len() + 1..]
+        } else {
+          &path_str
+        }
       },
     );
     let name = self.name.clone();
@@ -409,6 +412,7 @@ impl FullConfig {
       })
   }
   #[inline]
+  // before regolden, check if there is uncommit file
   async fn regolden(self, root_dir: &Path, work_dir: PathBuf) -> Vec<AssertError> {
     // get all hash for current dir
     // let output = self.exe(&work_dir);

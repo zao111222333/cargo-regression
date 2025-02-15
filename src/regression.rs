@@ -121,18 +121,20 @@ impl Args {
   }
 }
 async fn _test(args: Args) -> Result<TestResult, Vec<BuildError>> {
+  if args.regolden {
+    // args.root_dir
+  }
   let f1 = async move {
-    let work_dir = PathBuf::from(args.work_dir);
-    if work_dir.exists() {
-      remove_dir_all(&work_dir)
+    if args.work_dir.exists() {
+      remove_dir_all(&args.work_dir)
         .await
-        .map_err(|e| BuildError::CleanDir(work_dir, e))
+        .map_err(|e| BuildError::CleanDir(args.work_dir.to_path_buf(), e))
     } else {
       Ok(())
     }
   };
   let f2 =
-    async move { walk(FullConfig::new(args), PathBuf::from(args.root_dir), args).await };
+    async move { walk(FullConfig::new(args), args.root_dir.to_path_buf(), args).await };
   // walkthrough all config
   let (clean_dir, file_configs) = tokio::join!(f1, f2);
   if let Err(e) = clean_dir {

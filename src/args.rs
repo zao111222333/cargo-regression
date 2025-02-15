@@ -1,5 +1,4 @@
 use clap::Parser;
-use derive_setters::Setters;
 use std::{
   ffi::{OsStr, OsString},
   path::{Path, PathBuf},
@@ -8,7 +7,6 @@ use std::{
 use crate::regression::BuildError;
 
 #[derive(Debug, Clone, Copy)]
-#[derive(Setters)]
 pub struct Args {
   pub(crate) debug: bool,
   pub(crate) regolden: bool,
@@ -17,15 +15,15 @@ pub struct Args {
   pub(crate) permits: u32,
   pub(crate) exe_path: &'static str,
   pub(crate) args: &'static [&'static str],
-  pub(crate) work_dir: &'static str,
-  pub(crate) root_dir: &'static str,
-  #[setters(skip)]
-  pub(crate) root_dir_abs: &'static str,
+  pub(crate) work_dir: &'static Path,
+  pub(crate) root_dir: &'static Path,
+  // #[setters(skip)]
+  pub(crate) root_dir_abs: &'static Path,
   // TODO: use static hashset
   pub(crate) extensions: &'static [&'static str],
   // TODO: use static hashset
-  pub(crate) include: &'static [&'static str],
-  pub(crate) exclude: &'static [&'static str],
+  pub(crate) include: &'static [&'static Path],
+  pub(crate) exclude: &'static [&'static Path],
 }
 
 #[derive(Debug, Parser)]
@@ -63,7 +61,51 @@ impl Default for Args {
 }
 
 impl Args {
-  pub const fn new() -> Self {
+  pub const fn debug(mut self) -> Self {
+    self.debug = true;
+    self
+  }
+  pub const fn regolden(mut self) -> Self {
+    self.regolden = true;
+    self
+  }
+  pub const fn print_errs(mut self) -> Self {
+    self.print_errs = true;
+    self
+  }
+  pub const fn permits(mut self, permits: u32) -> Self {
+    self.permits = permits;
+    self
+  }
+  pub const fn exe_path(mut self, exe_path: &'static str) -> Self {
+    self.exe_path = exe_path;
+    self
+  }
+  pub const fn args(mut self, args: &'static [&'static str]) -> Self {
+    self.args = args;
+    self
+  }
+  pub fn work_dir(mut self, dir: &'static str) -> Self {
+    self.work_dir = Path::new(dir);
+    self
+  }
+  pub fn root_dir(mut self, dir: &'static str) -> Self {
+    self.root_dir = Path::new(dir);
+    self
+  }
+  pub const fn extensions(mut self, extensions: &'static [&'static str]) -> Self {
+    self.extensions = extensions;
+    self
+  }
+  pub fn include(mut self, files: impl IntoIterator<Item = impl AsRef<Path>>) -> Self {
+    self.include = leak_path_vec(files);
+    self
+  }
+  pub fn exclude(mut self, files: impl IntoIterator<Item = impl AsRef<Path>>) -> Self {
+    self.exclude = leak_path_vec(files);
+    self
+  }
+  pub fn new() -> Self {
     Self {
       debug: false,
       print_errs: false,
@@ -71,33 +113,29 @@ impl Args {
       permits: 1,
       exe_path: "",
       args: &[],
-      work_dir: "",
-      root_dir: "",
-      root_dir_abs: "",
+      work_dir: Path::new(""),
+      root_dir: Path::new(""),
+      root_dir_abs: Path::new(""),
       extensions: &[],
       include: &[],
       exclude: &[],
     }
   }
   pub(crate) fn rebuild(mut self) -> Result<Self, BuildError> {
-    self.root_dir_abs = leak_string(
+    self.root_dir_abs = leak_path(
       std::fs::canonicalize(self.root_dir)
-        .map_err(|e| BuildError::ReadDir(PathBuf::from(&self.root_dir), e))?
-        .display()
-        .to_string(),
+        .map_err(|e| BuildError::ReadDir(self.root_dir.to_path_buf(), e))?,
     );
-    self.include = leak_string_vec_res(self.include.iter().map(|path| {
-      let path = PathBuf::from(path);
-      match std::fs::canonicalize(&path) {
-        Ok(p) => Ok(p.display().to_string()),
-        Err(e) => Err(BuildError::ReadDir(PathBuf::from(&path), e)),
+    self.include = leak_path_vec_res(self.include.iter().map(|path| {
+      match std::fs::canonicalize(path) {
+        Ok(p) => Ok(p),
+        Err(e) => Err(BuildError::ReadDir(path.to_path_buf(), e)),
       }
     }))?;
-    self.exclude = leak_string_vec_res(self.exclude.iter().map(|path| {
-      let path = PathBuf::from(path);
-      match std::fs::canonicalize(&path) {
-        Ok(p) => Ok(p.display().to_string()),
-        Err(e) => Err(BuildError::ReadDir(PathBuf::from(&path), e)),
+    self.exclude = leak_path_vec_res(self.exclude.iter().map(|path| {
+      match std::fs::canonicalize(path) {
+        Ok(p) => Ok(p),
+        Err(e) => Err(BuildError::ReadDir(path.to_path_buf(), e)),
       }
     }))?;
     if self.extensions.iter().any(|&s| s == "toml") {
@@ -111,47 +149,43 @@ impl Args {
     T: Into<OsString> + Clone,
   {
     let builder = ArgsBuilder::parse_from(itr);
-    let mut args = Args::new();
-    if let Some(exe_path) = builder.exe_path {
-      args = args.exe_path(leak_string(exe_path));
-    }
-    args
-      .permits(builder.permits)
-      .regolden(builder.regolden)
-      .print_errs(builder.print_errs)
-      .debug(builder.debug)
-      .args(leak_string_vec(builder.args))
-      .extensions(leak_string_vec(builder.extensions))
-      .include(leak_string_vec(builder.include))
-      .exclude(leak_string_vec(builder.exclude))
-      .work_dir(leak_string(builder.work_dir))
-      .root_dir(leak_string(builder.root_dir))
-  }
-  fn included(&self, file_abs: &String) -> bool {
-    if self.include.is_empty() {
-      true
-    } else {
-      self.include.iter().any(|pattern| *pattern == file_abs)
-    }
-  }
-  fn excluded(&self, file_abs: &String) -> bool {
-    if self.exclude.is_empty() {
-      false
-    } else {
-      self.exclude.iter().any(|pattern| *pattern == file_abs)
+    Args {
+      debug: builder.debug,
+      regolden: builder.regolden,
+      print_errs: builder.print_errs,
+      permits: builder.permits,
+      exe_path: builder.exe_path.map_or("", leak_string),
+      args: leak_string_vec(builder.args),
+      extensions: leak_string_vec(builder.extensions),
+      include: leak_path_vec(builder.include),
+      exclude: leak_path_vec(builder.exclude),
+      work_dir: leak_path(builder.work_dir),
+      root_dir: leak_path(builder.root_dir),
+      root_dir_abs: Path::new(""),
     }
   }
   pub(super) fn filtered(&self, file: &Path) -> Result<bool, BuildError> {
     let file_abs = std::fs::canonicalize(file)
-      .map_err(|e| BuildError::ReadDir(PathBuf::from(&file), e))?
-      .display()
-      .to_string();
-    Ok(!self.included(&file_abs) || self.excluded(&file_abs))
+      .map_err(|e| BuildError::ReadDir(file.to_path_buf(), e))?;
+    let included = if self.include.is_empty() {
+      true
+    } else {
+      self.include.iter().any(|pattern| *pattern == file_abs)
+    };
+    let excluded = if self.exclude.is_empty() {
+      false
+    } else {
+      self.exclude.iter().any(|pattern| *pattern == file_abs)
+    };
+    Ok(!included || excluded)
   }
 }
 
 fn leak_string(s: String) -> &'static str {
   Box::leak(s.into_boxed_str())
+}
+fn leak_path(s: impl AsRef<Path>) -> &'static Path {
+  Box::leak(s.as_ref().to_path_buf().into_boxed_path())
 }
 fn leak_string_vec(iter: impl IntoIterator<Item = String>) -> &'static [&'static str] {
   Box::leak(
@@ -162,13 +196,21 @@ fn leak_string_vec(iter: impl IntoIterator<Item = String>) -> &'static [&'static
       .into_boxed_slice(),
   )
 }
-fn leak_string_vec_res<E>(
-  iter: impl IntoIterator<Item = Result<String, E>>,
-) -> Result<&'static [&'static str], E> {
+fn leak_path_vec(
+  iter: impl IntoIterator<Item = impl AsRef<Path>>,
+) -> &'static [&'static Path] {
+  Box::leak(iter.into_iter().map(leak_path).collect::<Vec<_>>().into_boxed_slice())
+}
+fn leak_path_vec_res<E>(
+  iter: impl IntoIterator<Item = Result<PathBuf, E>>,
+) -> Result<&'static [&'static Path], E> {
+  fn leak_path(s: PathBuf) -> &'static Path {
+    Box::leak(s.into_boxed_path())
+  }
   Ok(Box::leak(
     iter
       .into_iter()
-      .map(|res| res.map(leak_string))
+      .map(|res| res.map(leak_path))
       .collect::<Result<Vec<_>, _>>()?
       .into_boxed_slice(),
   ))
