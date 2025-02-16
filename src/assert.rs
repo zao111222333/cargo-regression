@@ -120,7 +120,7 @@ impl Assert {
       let name = name.clone();
       let workdir = workdir.clone();
       let output = output.clone();
-      tokio::spawn(async move { Self::save_output(name, workdir, output).await })
+      tokio::spawn(Self::save_output(name, workdir, output))
     };
     // exit_code
     let exit_code_want = self.exit_code.unwrap_or(0);
@@ -140,9 +140,7 @@ impl Assert {
           let workdir = workdir.clone();
           let golden_dir = golden_dir.clone();
           let output = output.clone();
-          tokio::spawn(async move {
-            golden.process_assert(config, name, workdir, golden_dir, output).await
-          })
+          tokio::spawn(golden.process_assert(config, name, workdir, golden_dir, output))
         })
         .collect()
     } else {

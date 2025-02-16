@@ -288,14 +288,19 @@ impl FullConfig {
       let toml_str = if args.debug { self.to_toml() } else { String::new() };
       let debug_config = workdir.join(format!("__debug__.{name}.toml"));
       let task_future = self.assert(rootdir, workdir.clone());
-      let debug_futures = async move {
+      let debug_future = async move {
         if args.debug {
-          tokio::fs::write(debug_config, toml_str).await
+          tokio::fs::write(&debug_config, toml_str)
+            .await
+            .map_err(|e| AssertError::Write(debug_config.display().to_string(), e))
         } else {
           Ok(())
         }
       };
-      let (_, errs) = tokio::join!(debug_futures, task_future);
+      let (e, mut errs) = tokio::join!(debug_future, task_future);
+      if let Err(e) = e {
+        errs.push(e);
+      }
       errs
     };
     if errs.is_empty() {

@@ -135,8 +135,7 @@ async fn _test(args: &'static Args) -> Result<TestResult, Vec<BuildError>> {
       Ok(())
     }
   };
-  let f2 =
-    async move { walk(FullConfig::new(args), args.rootdir.to_path_buf(), args).await };
+  let f2 = walk(FullConfig::new(args), args.rootdir.to_path_buf(), args);
   // walkthrough all config
   let (clean_dir, file_configs) = tokio::join!(f1, f2);
   if let Err(e) = clean_dir {
@@ -202,9 +201,7 @@ async fn walk(
           Either::Left(None)
         } else {
           let current_config = current_config.clone();
-          Either::Left(Some(tokio::spawn(async move {
-            walk(current_config, path, args).await
-          })))
+          Either::Left(Some(tokio::spawn(walk(current_config, path, args))))
         }
       } else {
         Either::Right(path)
