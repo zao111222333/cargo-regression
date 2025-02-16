@@ -5,5 +5,9 @@ exit-code = 1
 file = "{{name}}.stdout"
 match = [
     { pattern = "filtered out", count-at-least = 8 },
+]
+[[assert.golden]]
+file = "{{name}}.stderr"
+match = [
     { pattern = "report: ./tmp/trybuild/compile-fail.rs/compile-fail.report", count = 1 },
 ]

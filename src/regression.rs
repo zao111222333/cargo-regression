@@ -88,24 +88,24 @@ impl Termination for TestExitCode {
     let time = self.1.elapsed().as_secs_f32();
     match self.0 {
       Ok(TestResult { count_ok, count_ignored, count_filtered, faileds }) => {
+        println!();
         let failed_num = faileds.len();
-        let (code, state) = if failed_num == 0 {
-          (ExitCode::SUCCESS, State::Ok(None))
+        if failed_num == 0 {
+          println!("test result: {}. {count_ok} passed; {failed_num} failed; {count_ignored} ignored; {count_filtered} filtered out; finished in {time:.2}s", State::Ok(None));
+          ExitCode::SUCCESS
         } else {
-          print!("\nfailures:");
+          eprint!("failures:");
           for failed in &faileds {
-            print!("{failed}");
+            eprint!("{failed}");
           }
-          println!();
-          (ExitCode::FAILURE, State::Failed(None))
-        };
-        println!("\ntest result: {state}. {count_ok} passed; {failed_num} failed; {count_ignored} ignored; {count_filtered} filtered out; finished in {time:.2}s");
-        code
+          eprintln!("\n\ntest result: {}. {count_ok} passed; {failed_num} failed; {count_ignored} ignored; {count_filtered} filtered out; finished in {time:.2}s", State::Ok(None));
+          ExitCode::FAILURE
+        }
       }
       Err(build_errs) => {
-        println!("Fail to build test:");
+        eprintln!("Fail to build test:");
         for err in &build_errs {
-          println!("{err}");
+          eprintln!("{err}");
         }
         ExitCode::FAILURE
       }
