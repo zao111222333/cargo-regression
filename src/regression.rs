@@ -11,7 +11,6 @@ use itertools::{Either, Itertools};
 use tokio::{fs::remove_dir_all, sync::Semaphore};
 
 use crate::{
-  args::match_extension,
   assert::{AssertError, DisplayErrs},
   config::FullConfig,
   Args,
@@ -122,7 +121,7 @@ impl Args {
     )
   }
 }
-async fn _test(args: Args) -> Result<TestResult, Vec<BuildError>> {
+async fn _test(args: &'static Args) -> Result<TestResult, Vec<BuildError>> {
   let f1 = async move {
     if args.work_dir.exists() {
       remove_dir_all(&args.work_dir)
@@ -178,7 +177,7 @@ async fn _test(args: Args) -> Result<TestResult, Vec<BuildError>> {
 async fn walk(
   mut current_config: FullConfig,
   current_path: PathBuf,
-  args: Args,
+  args: &'static Args,
 ) -> Result<Vec<(PathBuf, FullConfig)>, Vec<BuildError>> {
   let all_path = current_path.join("__all__.toml");
   if all_path.exists() {
@@ -211,7 +210,7 @@ async fn walk(
   let mut file_configs = files
     .into_iter()
     .filter_map(|file| {
-      if match_extension(&file, current_config.extensions.iter()) {
+      if current_config.match_extension(&file) {
         match args.filtered(&file) {
           Ok(filtered) => {
             if filtered {

@@ -1,60 +1,42 @@
 use clap::Parser;
 use std::{
-  ffi::{OsStr, OsString},
+  collections::HashSet,
+  ffi::OsString,
+  mem::take,
   path::{Path, PathBuf},
 };
 
 use crate::regression::BuildError;
 
-#[derive(Debug, Clone, Copy)]
-pub struct Args {
-  pub(crate) debug: bool,
-  pub(crate) print_errs: bool,
-  /// to schedule tasks, default is 1
-  pub(crate) permits: u32,
-  pub(crate) exe_path: &'static str,
-  pub(crate) args: &'static [&'static str],
-  pub(crate) work_dir: &'static Path,
-  pub(crate) root_dir: &'static Path,
-  // #[setters(skip)]
-  pub(crate) root_dir_abs: &'static Path,
-  // TODO: use static hashset
-  pub(crate) extensions: &'static [&'static str],
-  // TODO: use static hashset
-  pub(crate) include: &'static [&'static Path],
-  pub(crate) exclude: &'static [&'static Path],
-}
-
 #[derive(Debug, Parser)]
 #[command(version)]
-// , separated by space
-struct ArgsBuilder {
+pub struct Args {
   #[clap(long, help = "Debug mode flag, recommended")]
-  debug: bool,
+  pub(crate) debug: bool,
   #[clap(long, help = "Print errors [default: false, save errs to report]")]
-  print_errs: bool,
-  #[clap(long, help = "Default executable path")]
-  exe_path: Option<String>,
+  pub(crate) print_errs: bool,
+  #[clap(long, help = "Default executable path", default_value_t = String::new())]
+  pub(crate) exe_path: String,
   #[clap(long, help = "Default arguements", num_args = 1..)]
-  args: Vec<String>,
+  pub(crate) args: Vec<String>,
   #[clap(long, help="Default input extensions(s)", num_args = 1..)]
-  extensions: Vec<String>,
-  #[clap(long, help="Input include. E.g., --include ./cases/*", default_value = None, num_args = 1..)]
-  include: Vec<String>,
-  #[clap(long, help="Input exclude. E.g., --exclude ./cases/*", default_value = None, num_args = 1..)]
-  exclude: Vec<String>,
+  pub(crate) extensions: Vec<String>,
+  #[clap(long, help="Input include. E.g., --include ./cases/*", num_args = 1..)]
+  include: Vec<PathBuf>,
+  #[clap(skip)]
+  include_set: HashSet<PathBuf>,
+  #[clap(long, help="Input exclude. E.g., --exclude ./cases/*", num_args = 1..)]
+  exclude: Vec<PathBuf>,
+  #[clap(skip)]
+  exclude_set: HashSet<PathBuf>,
   #[clap(long, help = "Total permits to limit max parallelism", default_value_t = 1)]
-  permits: u32,
-  #[clap(long, default_value_t = String::from("./tmp"))]
-  work_dir: String,
+  pub(crate) permits: u32,
+  #[clap(long, help = "Change the directory to perform test", default_value = "./tmp")]
+  pub(crate) work_dir: PathBuf,
   #[clap(value_parser)]
-  root_dir: String,
-}
-
-impl Default for Args {
-  fn default() -> Self {
-    Self::new()
-  }
+  pub(crate) root_dir: PathBuf,
+  #[clap(skip)]
+  pub(crate) root_dir_abs: PathBuf,
 }
 
 impl Args {
@@ -70,156 +52,69 @@ impl Args {
     self.permits = permits;
     self
   }
-  pub const fn exe_path(mut self, exe_path: &'static str) -> Self {
-    self.exe_path = exe_path;
+  pub fn exe_path(mut self, exe_path: impl AsRef<str>) -> Self {
+    self.exe_path = exe_path.as_ref().into();
     self
   }
-  pub const fn args(mut self, args: &'static [&'static str]) -> Self {
-    self.args = args;
+  pub fn args(mut self, iter: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+    self.args = iter.into_iter().map(|s| s.as_ref().into()).collect();
     self
   }
-  pub fn work_dir(mut self, dir: &'static str) -> Self {
-    self.work_dir = Path::new(dir);
+  pub fn work_dir(mut self, dir: impl AsRef<Path>) -> Self {
+    self.work_dir = dir.as_ref().to_path_buf();
     self
   }
-  pub fn root_dir(mut self, dir: &'static str) -> Self {
-    self.root_dir = Path::new(dir);
+  pub fn extensions(mut self, iter: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+    self.extensions = iter.into_iter().map(|s| s.as_ref().into()).collect();
     self
   }
-  pub const fn extensions(mut self, extensions: &'static [&'static str]) -> Self {
-    self.extensions = extensions;
+  pub fn include(mut self, iter: impl IntoIterator<Item = impl AsRef<Path>>) -> Self {
+    self.include = iter.into_iter().map(|s| s.as_ref().to_path_buf()).collect();
     self
   }
-  pub fn include(mut self, files: impl IntoIterator<Item = impl AsRef<Path>>) -> Self {
-    self.include = leak_path_vec(files);
+  pub fn exclude(mut self, iter: impl IntoIterator<Item = impl AsRef<Path>>) -> Self {
+    self.exclude = iter.into_iter().map(|s| s.as_ref().to_path_buf()).collect();
     self
   }
-  pub fn exclude(mut self, files: impl IntoIterator<Item = impl AsRef<Path>>) -> Self {
-    self.exclude = leak_path_vec(files);
-    self
-  }
-  pub fn new() -> Self {
-    Self {
-      debug: false,
-      print_errs: false,
-      permits: 1,
-      exe_path: "",
-      args: &[],
-      work_dir: Path::new(""),
-      root_dir: Path::new(""),
-      root_dir_abs: Path::new(""),
-      extensions: &[],
-      include: &[],
-      exclude: &[],
-    }
-  }
-  pub(crate) fn rebuild(mut self) -> Result<Self, BuildError> {
-    self.root_dir_abs = leak_path(
-      std::fs::canonicalize(self.root_dir)
-        .map_err(|e| BuildError::ReadDir(self.root_dir.to_path_buf(), e))?,
-    );
-    self.include = leak_path_vec_res(self.include.iter().map(|path| {
-      match std::fs::canonicalize(path) {
-        Ok(p) => Ok(p),
-        Err(e) => Err(BuildError::ReadDir(path.to_path_buf(), e)),
-      }
-    }))?;
-    self.exclude = leak_path_vec_res(self.exclude.iter().map(|path| {
-      match std::fs::canonicalize(path) {
-        Ok(p) => Ok(p),
-        Err(e) => Err(BuildError::ReadDir(path.to_path_buf(), e)),
-      }
-    }))?;
-    if self.extensions.iter().any(|&s| s == "toml") {
-      return Err(BuildError::InputExtToml);
-    }
-    Ok(self)
+  pub fn new(root_dir: impl AsRef<str>) -> Self {
+    <Self as Parser>::parse_from(["", root_dir.as_ref()])
   }
   pub fn parse_from<I, T>(itr: I) -> Self
   where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
   {
-    let builder = ArgsBuilder::parse_from(itr);
-    Args {
-      debug: builder.debug,
-      print_errs: builder.print_errs,
-      permits: builder.permits,
-      exe_path: builder.exe_path.map_or("", leak_string),
-      args: leak_string_vec(builder.args),
-      extensions: leak_string_vec(builder.extensions),
-      include: leak_path_vec(builder.include),
-      exclude: leak_path_vec(builder.exclude),
-      work_dir: leak_path(builder.work_dir),
-      root_dir: leak_path(builder.root_dir),
-      root_dir_abs: Path::new(""),
+    <Self as Parser>::parse_from(itr)
+  }
+  pub(crate) fn rebuild(mut self) -> Result<&'static Self, BuildError> {
+    self.root_dir_abs = std::fs::canonicalize(&self.root_dir)
+      .map_err(|e| BuildError::ReadDir(self.root_dir.to_path_buf(), e))?;
+    self.include_set = take(&mut self.include)
+      .into_iter()
+      .map(|path| match std::fs::canonicalize(&path) {
+        Ok(p) => Ok(p),
+        Err(e) => Err(BuildError::ReadDir(path, e)),
+      })
+      .collect::<Result<HashSet<_>, _>>()?;
+    self.exclude_set = take(&mut self.exclude_set)
+      .into_iter()
+      .map(|path| match std::fs::canonicalize(&path) {
+        Ok(p) => Ok(p),
+        Err(e) => Err(BuildError::ReadDir(path, e)),
+      })
+      .collect::<Result<HashSet<_>, _>>()?;
+    if self.extensions.iter().any(|s| s == "toml") {
+      return Err(BuildError::InputExtToml);
     }
+    Ok(Box::leak(Box::new(self)))
   }
   pub(super) fn filtered(&self, file: &Path) -> Result<bool, BuildError> {
     let file_abs = std::fs::canonicalize(file)
       .map_err(|e| BuildError::ReadDir(file.to_path_buf(), e))?;
-    let included = if self.include.is_empty() {
-      true
-    } else {
-      self.include.iter().any(|pattern| *pattern == file_abs)
-    };
-    let excluded = if self.exclude.is_empty() {
-      false
-    } else {
-      self.exclude.iter().any(|pattern| *pattern == file_abs)
-    };
+    let included =
+      if self.include_set.is_empty() { true } else { self.include_set.contains(&file_abs) };
+    let excluded =
+      if self.exclude_set.is_empty() { false } else { self.exclude_set.contains(&file_abs) };
     Ok(!included || excluded)
   }
-}
-
-fn leak_string(s: String) -> &'static str {
-  Box::leak(s.into_boxed_str())
-}
-fn leak_path(s: impl AsRef<Path>) -> &'static Path {
-  Box::leak(s.as_ref().to_path_buf().into_boxed_path())
-}
-fn leak_string_vec(iter: impl IntoIterator<Item = String>) -> &'static [&'static str] {
-  Box::leak(
-    iter
-      .into_iter()
-      .map(leak_string)
-      .collect::<Vec<_>>()
-      .into_boxed_slice(),
-  )
-}
-fn leak_path_vec(
-  iter: impl IntoIterator<Item = impl AsRef<Path>>,
-) -> &'static [&'static Path] {
-  Box::leak(iter.into_iter().map(leak_path).collect::<Vec<_>>().into_boxed_slice())
-}
-fn leak_path_vec_res<E>(
-  iter: impl IntoIterator<Item = Result<PathBuf, E>>,
-) -> Result<&'static [&'static Path], E> {
-  fn leak_path(s: PathBuf) -> &'static Path {
-    Box::leak(s.into_boxed_path())
-  }
-  Ok(Box::leak(
-    iter
-      .into_iter()
-      .map(|res| res.map(leak_path))
-      .collect::<Result<Vec<_>, _>>()?
-      .into_boxed_slice(),
-  ))
-}
-
-pub(crate) fn match_extension<I: Iterator<Item = impl AsRef<str>>>(
-  file: &Path,
-  extensions: I,
-) -> bool {
-  file
-    .extension()
-    .and_then(OsStr::to_str)
-    .and_then(|s| {
-      if extensions.into_iter().any(|ext_s| ext_s.as_ref() == s) {
-        Some(())
-      } else {
-        None
-      }
-    })
-    .is_some()
 }

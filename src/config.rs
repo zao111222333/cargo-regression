@@ -3,6 +3,8 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::{
   borrow::Cow,
+  collections::HashSet,
+  ffi::OsStr,
   fs::{create_dir_all, read_to_string, remove_dir_all},
   ops::{Deref, DerefMut},
   path::{Path, PathBuf},
@@ -96,7 +98,7 @@ pub(crate) struct FullConfig {
   epsilon: Source<f32>,
   args: Source<Vec<String>>,
   envs: Source<IndexMap<String, String>>,
-  pub(crate) extensions: Source<Vec<String>>,
+  pub(crate) extensions: Source<HashSet<String>>,
   /// In default, only link all `{{name}}*` files into work_dir.
   /// Use it to specify extern files.
   extern_files: Source<Vec<String>>,
@@ -110,7 +112,7 @@ struct Config {
   print_errs: Option<bool>,
   permit: Option<u32>,
   exe_path: Option<String>,
-  extensions: Option<Vec<String>>,
+  extensions: Option<HashSet<String>>,
   epsilon: Option<f32>,
   args: Option<Vec<String>>,
   envs: Option<IndexMap<String, String>>,
@@ -123,22 +125,24 @@ impl FullConfig {
   pub(crate) fn new_filtered() -> Self {
     Self { filtered: true, ..Default::default() }
   }
-  pub(crate) fn new(args: Args) -> Self {
+  pub(crate) fn new(args: &'static Args) -> Self {
     Self {
-      exe_path: args.exe_path.to_owned().into(),
+      exe_path: args.exe_path.clone().into(),
       print_errs: args.print_errs.into(),
       epsilon: 1e-10.into(),
-      args: args.args.iter().map(ToString::to_string).collect::<Vec<_>>().into(),
-      extensions: args
-        .extensions
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .into(),
+      args: args.args.clone().into(),
+      extensions: args.extensions.iter().cloned().collect::<HashSet<_>>().into(),
       ..Default::default()
     }
   }
-  fn check(&self, file: &Path, args: Args) -> Result<(), BuildError> {
+  pub(crate) fn match_extension(&self, file: &Path) -> bool {
+    file
+      .extension()
+      .and_then(OsStr::to_str)
+      .and_then(|s| self.extensions.get(s))
+      .is_some()
+  }
+  fn check(&self, file: &Path, args: &'static Args) -> Result<(), BuildError> {
     if *self.permit > args.permits {
       return Err(BuildError::PermitEcxceed(
         file.to_path_buf(),
@@ -154,7 +158,11 @@ impl FullConfig {
     }
     Ok(())
   }
-  pub(crate) fn eval(mut self, file: &Path, args: Args) -> Result<Self, BuildError> {
+  pub(crate) fn eval(
+    mut self,
+    file: &Path,
+    args: &'static Args,
+  ) -> Result<Self, BuildError> {
     self.check(file, args)?;
     self.extension = file.extension().unwrap().to_str().unwrap().to_owned();
     let name = file.with_extension("");
@@ -251,7 +259,7 @@ impl FullConfig {
 
 impl FullConfig {
   #[inline]
-  pub(crate) async fn test(self, path: &Path, args: Args) -> State {
+  pub(crate) async fn test(self, path: &Path, args: &'static Args) -> State {
     if self.filtered {
       return State::FilteredOut;
     }
