@@ -83,7 +83,7 @@ Only test specified tasks.
 ``` shell
 # No filter
 cargo regression ./demo
-# Only include demo/trybuild/*
+# Only include demo/trybuild/* and ./demo/test-sh/*
 cargo regression ./demo --include demo/trybuild/* ./demo/test-sh/*
 # Exclude demo/trybuild/*
 cargo regression ./demo --exclude demo/trybuild/*
