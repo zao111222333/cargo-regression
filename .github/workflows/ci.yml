@@ -60,7 +60,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
           components: rustfmt
       - name: Build
-        run: cargo build --verbose
+        run: cargo install --path .
       - name: Run Tests
         run: cargo test --verbose
   # Checks code style.

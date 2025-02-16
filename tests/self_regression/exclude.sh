@@ -1,0 +1,1 @@
+cargo regression ${rootdir}/../../demo --exclude ${rootdir}/../../demo/trybuild/*

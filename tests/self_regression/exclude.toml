@@ -1,0 +1,8 @@
+[assert]
+exit-code = 1
+
+[[assert.golden]]
+file = "{{name}}.stdout"
+match = [
+    { pattern = "trybuild.*filtered out", count-at-least = 2 },
+]

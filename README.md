@@ -21,7 +21,7 @@ Then set your test files like [`./demo`](./demo), and
 cargo regression ./demo
 ```
 
-The tests will be exectued in `./tmp` in default, change the directory by `--work-dir`. All CLI arguments here:
+The tests will be exectued in `./tmp` in default, change the directory by `--workdir`. All CLI arguments here:
 
 | Argument | Description |
 | -- | -- |
@@ -57,7 +57,7 @@ There are three types of configs:
 | Argument | In `xxx.toml` | Description |
 | -- | -- | -- |
 | `--exe-path bash` | `exe-path = "bash"` | The executable path to execute task |
-| `--args {{name}}.sh arg1` | `args = ["{{name}}.sh", "arg1"]` | The arguements for execute task |
+| `--args {{name}}.sh arg1` | `args = ["{{name}}.sh", "arg1"]` | The arguements for execute task, default `["{{name}}.{{extension}}"]` |
 | NA | `envs = { k1 = "v1", k2 = "v2" }` | The environment variables, see [`test-match.toml`](demo/test-sh/test-match.toml) |
 | NA | `extern-files = ["data.json"]` | In defualt only `{{name}}.xx` files will be linked to work dir, use this to link other files, see [`__all__.toml`](demo/test-py/__all__.toml) |
 | `--print-errs` | `print-errs = true` | Print errors rather than save to reports |
@@ -68,7 +68,7 @@ There are three types of configs:
 There are a few keywords that will be replaced into its values, for all configs.
 | Variable | Description |
 | -- | -- |
-| `{{root-dir}}`  | The absolute path of test root |
+| `{{rootdir}}`  | The absolute path of test root |
 | `{{name}}`      | The name of task file |
 | `{{extension}}` | The extension of task file |
 
@@ -84,7 +84,7 @@ Only test specified tasks.
 # No filter
 cargo regression ./demo
 # Only include demo/trybuild/*
-cargo regression ./demo --include demo/trybuild/*
+cargo regression ./demo --include demo/trybuild/* ./demo/test-sh/*
 # Exclude demo/trybuild/*
 cargo regression ./demo --exclude demo/trybuild/*
 # Combined filter

@@ -15,7 +15,7 @@ use std::{
 
 use crate::{
   assert::{AssertConfig, AssertError, DisplayErrs},
-  regression::{BuildError, FailedState, State},
+  regression::{BuildError, FailedState, State, GOLDEN_DIR},
   Args, Assert,
 };
 
@@ -99,7 +99,7 @@ pub(crate) struct FullConfig {
   args: Source<Vec<String>>,
   envs: Source<IndexMap<String, String>>,
   pub(crate) extensions: Source<HashSet<String>>,
-  /// In default, only link all `{{name}}*` files into work_dir.
+  /// In default, only link all `{{name}}*` files into workdir.
   /// Use it to specify extern files.
   extern_files: Source<Vec<String>>,
   assert: Source<Assert>,
@@ -170,7 +170,7 @@ impl FullConfig {
     let eval_str = |s: &mut String| -> Result<(), BuildError> {
       *s = s.replace("{{extension}}", &self.extension);
       *s = s.replace("{{name}}", &self.name);
-      *s = s.replace("{{root-dir}}", args.root_dir_abs.to_str().unwrap());
+      *s = s.replace("{{rootdir}}", args.rootdir_abs.to_str().unwrap());
       Ok(())
     };
     eval_str(&mut self.exe_path)?;
@@ -190,8 +190,8 @@ impl FullConfig {
       .insert_entry(self.extension.clone());
     self
       .envs
-      .entry("root-dir".to_owned())
-      .insert_entry(args.root_dir_abs.display().to_string());
+      .entry("rootdir".to_owned())
+      .insert_entry(args.rootdir_abs.display().to_string());
     if let Some(goldens) = self.assert.golden.as_deref_mut() {
       for golden in goldens.iter_mut() {
         eval_str(&mut golden.file)?;
@@ -267,14 +267,14 @@ impl FullConfig {
       return State::Ignored;
     }
     let print_errs = *self.print_errs;
-    let root_dir = path.parent().unwrap();
+    let rootdir = path.parent().unwrap();
     let path_str = path.display().to_string();
-    let work_dir = args.work_dir.join(
-      // remove the root of root_dir
+    let workdir = args.workdir.join(
+      // remove the root of rootdir
       {
-        let root_dir = args.root_dir.to_str().unwrap();
-        if path_str.starts_with(root_dir) {
-          &path_str[root_dir.len() + 1..]
+        let rootdir = args.rootdir.to_str().unwrap();
+        if path_str.starts_with(rootdir) {
+          &path_str[rootdir.len() + 1..]
         } else {
           &path_str
         }
@@ -282,12 +282,12 @@ impl FullConfig {
     );
     let now = Instant::now();
     let name = self.name.clone();
-    let mut errs = if let Err(e) = self.prepare_dir(root_dir, &work_dir) {
+    let mut errs = if let Err(e) = self.prepare_dir(rootdir, &workdir) {
       vec![e]
     } else {
       let toml_str = if args.debug { self.to_toml() } else { String::new() };
-      let debug_config = work_dir.join(format!("__debug__.{name}.toml"));
-      let task_future = self.assert(root_dir, work_dir.clone());
+      let debug_config = workdir.join(format!("__debug__.{name}.toml"));
+      let task_future = self.assert(rootdir, workdir.clone());
       let debug_futures = async move {
         if args.debug {
           tokio::fs::write(debug_config, toml_str).await
@@ -304,7 +304,7 @@ impl FullConfig {
       let failed_state = if print_errs {
         FailedState::NoReport(path.to_path_buf(), errs)
       } else {
-        let err_report = work_dir.join(format!("{name}.report"));
+        let err_report = workdir.join(format!("{name}.report"));
         match tokio::fs::write(&err_report, DisplayErrs(&errs).to_string()).await {
           Ok(_) => FailedState::ReportSaved(err_report),
           Err(e) => FailedState::NoReport(path.to_path_buf(), {
@@ -338,26 +338,26 @@ impl FullConfig {
       .unwrap_or_default()
   }
   #[inline]
-  fn prepare_dir(&self, root_dir: &Path, work_dir: &Path) -> Result<(), AssertError> {
-    let root_dir = if root_dir.is_absolute() {
-      Cow::Borrowed(root_dir)
+  fn prepare_dir(&self, rootdir: &Path, workdir: &Path) -> Result<(), AssertError> {
+    let rootdir = if rootdir.is_absolute() {
+      Cow::Borrowed(rootdir)
     } else {
       Cow::Owned(
-        std::fs::canonicalize(root_dir)
-          .map_err(|e| AssertError::UnableToReadDir(root_dir.display().to_string(), e))?,
+        std::fs::canonicalize(rootdir)
+          .map_err(|e| AssertError::UnableToReadDir(rootdir.display().to_string(), e))?,
       )
     };
     // create
-    if work_dir.exists() {
-      remove_dir_all(work_dir)
-        .map_err(|e| AssertError::UnableToDeleteDir(work_dir.display().to_string(), e))?;
+    if workdir.exists() {
+      remove_dir_all(workdir)
+        .map_err(|e| AssertError::UnableToDeleteDir(workdir.display().to_string(), e))?;
     }
-    create_dir_all(work_dir)
-      .map_err(|e| AssertError::UnableToCreateDir(work_dir.display().to_string(), e))?;
+    create_dir_all(workdir)
+      .map_err(|e| AssertError::UnableToCreateDir(workdir.display().to_string(), e))?;
     // golden
-    let golden_dir = root_dir.join("__golden__");
+    let golden_dir = rootdir.join(GOLDEN_DIR);
     if golden_dir.exists() {
-      let link = work_dir.join("__golden__");
+      let link = workdir.join(GOLDEN_DIR);
       std::os::unix::fs::symlink(&golden_dir, &link).map_err(|e| {
         AssertError::LinkFile(
           golden_dir.display().to_string(),
@@ -368,23 +368,23 @@ impl FullConfig {
     }
     // extern_file
     for extern_file in self.extern_files.iter() {
-      let path = root_dir.join(extern_file);
+      let path = rootdir.join(extern_file);
       if path.exists() {
-        let link = work_dir.join(extern_file);
+        let link = workdir.join(extern_file);
         std::os::unix::fs::symlink(&path, &link).map_err(|e| {
           AssertError::LinkFile(path.display().to_string(), link.display().to_string(), e)
         })?;
       }
     }
-    for entry in root_dir
+    for entry in rootdir
       .read_dir()
-      .map_err(|e| AssertError::UnableToReadDir(root_dir.display().to_string(), e))?
+      .map_err(|e| AssertError::UnableToReadDir(rootdir.display().to_string(), e))?
       .flatten()
     {
       let full_name = entry.file_name();
       if full_name.to_str().unwrap_or("").starts_with(&self.name) {
         let original = entry.path();
-        let link = work_dir.join(full_name);
+        let link = workdir.join(full_name);
         std::os::unix::fs::symlink(&original, &link).map_err(|e| {
           AssertError::LinkFile(
             original.display().to_string(),
@@ -397,9 +397,9 @@ impl FullConfig {
     Ok(())
   }
   #[inline]
-  fn exe(&self, work_dir: &Path) -> Result<Output, AssertError> {
+  fn exe(&self, workdir: &Path) -> Result<Output, AssertError> {
     Command::new(&*self.exe_path)
-      .current_dir(work_dir)
+      .current_dir(workdir)
       .args(&*self.args)
       .envs(&*self.envs)
       .output()
@@ -415,8 +415,8 @@ impl FullConfig {
       })
   }
   #[inline]
-  async fn assert(self, root_dir: &Path, work_dir: PathBuf) -> Vec<AssertError> {
-    match self.exe(&work_dir) {
+  async fn assert(self, rootdir: &Path, workdir: PathBuf) -> Vec<AssertError> {
+    match self.exe(&workdir) {
       Ok(output) => {
         let assert_config = self.assert_config();
         self
@@ -425,8 +425,8 @@ impl FullConfig {
           .assert(
             assert_config,
             self.name,
-            work_dir,
-            root_dir.join("__golden__"),
+            workdir,
+            rootdir.join(GOLDEN_DIR),
             Arc::new(output),
           )
           .await

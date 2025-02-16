@@ -16,6 +16,8 @@ use crate::{
   Args,
 };
 
+pub(crate) const GOLDEN_DIR: &str = "__golden__";
+
 #[derive(Debug, thiserror::Error)]
 pub enum BuildError {
   #[error("file \"{0}\": {1}")]
@@ -86,17 +88,19 @@ impl Termination for TestExitCode {
     let time = self.1.elapsed().as_secs_f32();
     match self.0 {
       Ok(TestResult { count_ok, count_ignored, count_filtered, faileds }) => {
-        if faileds.is_empty() {
-          println!("test result: {}. {count_ok} passed; 0 failed; {count_ignored} ignored; {count_filtered} filtered out; finished in {time:.2}s", State::Ok(None));
-          ExitCode::SUCCESS
+        let failed_num = faileds.len();
+        let (code, state) = if failed_num == 0 {
+          (ExitCode::SUCCESS, State::Ok(None))
         } else {
           print!("\nfailures:");
           for failed in &faileds {
             print!("{failed}");
           }
-          println!("\n\ntest result: {}. {count_ok} passed; {} failed; {count_ignored} ignored; {count_filtered} filtered out; finished in {time:.2}s", State::Failed(None), faileds.len());
-          ExitCode::FAILURE
-        }
+          print!("\n");
+          (ExitCode::FAILURE, State::Failed(None))
+        };
+        println!("\ntest result: {state}. {count_ok} passed; {failed_num} failed; {count_ignored} ignored; {count_filtered} filtered out; finished in {time:.2}s");
+        code
       }
       Err(build_errs) => {
         println!("Fail to build test:");
@@ -123,16 +127,16 @@ impl Args {
 }
 async fn _test(args: &'static Args) -> Result<TestResult, Vec<BuildError>> {
   let f1 = async move {
-    if args.work_dir.exists() {
-      remove_dir_all(&args.work_dir)
+    if args.workdir.exists() {
+      remove_dir_all(&args.workdir)
         .await
-        .map_err(|e| BuildError::CleanDir(args.work_dir.to_path_buf(), e))
+        .map_err(|e| BuildError::CleanDir(args.workdir.to_path_buf(), e))
     } else {
       Ok(())
     }
   };
   let f2 =
-    async move { walk(FullConfig::new(args), args.root_dir.to_path_buf(), args).await };
+    async move { walk(FullConfig::new(args), args.rootdir.to_path_buf(), args).await };
   // walkthrough all config
   let (clean_dir, file_configs) = tokio::join!(f1, f2);
   if let Err(e) = clean_dir {
@@ -194,7 +198,7 @@ async fn walk(
     read_dir.into_iter().partition_map(|entry| {
       let path = entry.unwrap().path();
       if path.is_dir() {
-        if path.file_name().unwrap() == "__golden__" {
+        if path.file_name().unwrap() == GOLDEN_DIR {
           Either::Left(None)
         } else {
           let current_config = current_config.clone();

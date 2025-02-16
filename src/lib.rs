@@ -11,7 +11,7 @@ pub use regression::TestExitCode;
 async fn demo() -> TestExitCode {
   let args = Args::new("demo")
     .debug()
-    .work_dir("tmp")
-    .include(&["demo/test-premit/test2.sh"]);
+    .workdir("tmp")
+    .include(["demo/test-premit/test2.sh"]);
   args.test().await
 }

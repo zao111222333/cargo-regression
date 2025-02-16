@@ -5,7 +5,7 @@ exe-path = "python"
 # the defualt permit is 0, which means the task will
 # always process without manage.
 extensions = ["py"]
-# In default, only `{{name}}.*` will be added to work_dir
+# In default, only `{{name}}.*` will be added to workdir
 extern-files = ["data.json"]
 
 [extend]

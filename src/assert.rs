@@ -85,11 +85,11 @@ impl Assert {
   #[inline]
   async fn save_output(
     name: String,
-    work_dir: PathBuf,
+    workdir: PathBuf,
     output: Arc<Output>,
   ) -> [Option<AssertError>; 2] {
-    let stdout = work_dir.join(format!("{name}.stdout"));
-    let stderr = work_dir.join(format!("{name}.stderr"));
+    let stdout = workdir.join(format!("{name}.stdout"));
+    let stderr = workdir.join(format!("{name}.stderr"));
     [
       // save stdout to {{name}}.stdout
       if let Err(e) = tokio::fs::write(&stdout, &output.stdout).await {
@@ -110,7 +110,7 @@ impl Assert {
     self,
     config: AssertConfig,
     name: String,
-    work_dir: PathBuf,
+    workdir: PathBuf,
     golden_dir: PathBuf,
     output: Arc<Output>,
   ) -> Vec<AssertError> {
@@ -118,9 +118,9 @@ impl Assert {
     // write stderr/stdout for debug
     let write_future = {
       let name = name.clone();
-      let work_dir = work_dir.clone();
+      let workdir = workdir.clone();
       let output = output.clone();
-      tokio::spawn(async move { Self::save_output(name, work_dir, output).await })
+      tokio::spawn(async move { Self::save_output(name, workdir, output).await })
     };
     // exit_code
     let exit_code_want = self.exit_code.unwrap_or(0);
@@ -137,12 +137,12 @@ impl Assert {
         .into_iter()
         .map(|golden| {
           let name = name.clone();
-          let work_dir = work_dir.clone();
+          let workdir = workdir.clone();
           let golden_dir = golden_dir.clone();
           let output = output.clone();
           tokio::spawn(async move {
             golden
-              .process_assert(config, name, work_dir, golden_dir, output)
+              .process_assert(config, name, workdir, golden_dir, output)
               .await
           })
         })
@@ -239,7 +239,7 @@ impl Golden {
     self,
     config: AssertConfig,
     name: String,
-    work_dir: PathBuf,
+    workdir: PathBuf,
     golden_dir: PathBuf,
     output: Arc<Output>,
   ) -> Vec<AssertError> {
@@ -262,7 +262,7 @@ impl Golden {
         Err(_) => errs.push(AssertError::Stderr),
       }
     } else {
-      match read(work_dir.join(&self.file)) {
+      match read(workdir.join(&self.file)) {
         Some(output) => self.assert(config, &stderr_name, golden_str, &output, &mut errs),
         None => errs.push(AssertError::UnableToRead(self.file)),
       }

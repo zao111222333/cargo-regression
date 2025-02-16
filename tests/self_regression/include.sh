@@ -1,0 +1,1 @@
+cargo regression ${rootdir}/../../demo --include ${rootdir}/../../demo/trybuild/*
