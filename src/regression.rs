@@ -96,7 +96,7 @@ impl Termination for TestExitCode {
           for failed in &faileds {
             print!("{failed}");
           }
-          print!("\n");
+          println!();
           (ExitCode::FAILURE, State::Failed(None))
         };
         println!("\ntest result: {state}. {count_ok} passed; {failed_num} failed; {count_ignored} ignored; {count_filtered} filtered out; finished in {time:.2}s");

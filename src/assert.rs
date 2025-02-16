@@ -141,9 +141,7 @@ impl Assert {
           let golden_dir = golden_dir.clone();
           let output = output.clone();
           tokio::spawn(async move {
-            golden
-              .process_assert(config, name, workdir, golden_dir, output)
-              .await
+            golden.process_assert(config, name, workdir, golden_dir, output).await
           })
         })
         .collect()
