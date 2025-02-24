@@ -377,7 +377,10 @@ pub enum ValueReport {
 impl fmt::Display for ValueReport {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      ValueReport::Config => write!(f, "You should specify one and only one of `value`, `value-at-least`, `value-at-most`"),
+      ValueReport::Config => write!(
+        f,
+        "You should specify one and only one of `value`, `value-at-least`, `value-at-most`"
+      ),
       ValueReport::AssertFail {
         line,
         pattern,
@@ -387,16 +390,23 @@ impl fmt::Display for ValueReport {
         epsilon,
         cond,
       } => {
-        let (msg1,msg2) = match cond {
-          Some(MatchCond::AtLeast) => ("> ","-"),
+        let (msg1, msg2) = match cond {
+          Some(MatchCond::AtLeast) => ("> ", "-"),
           Some(MatchCond::AtMost) => ("< ", "+"),
-          None => ("","±"),
+          None => ("", "±"),
         };
-        write!(f, "pattern '{pattern}' caputred '{matched}' at line {line}, want {msg1}{want_value}{msg2}{epsilon}, got: {got_value}")
-      },
+        write!(
+          f,
+          "pattern '{pattern}' caputred '{matched}' at line {line}, want {msg1}{want_value}{msg2}{epsilon}, got: {got_value}"
+        )
+      }
       ValueReport::NoMatch { pattern } => write!(f, "can not match pattern '{pattern}'"),
-      ValueReport::ParseFloat { line, pattern, matched } => write!(f, "pattern '{pattern}' caputred '{matched}' at line {line}, parse failed"),
-      ValueReport::NegativeEpsilon(epsilon) => write!(f, "the epsilon = {epsilon} is negative"),
+      ValueReport::ParseFloat { line, pattern, matched } => {
+        write!(f, "pattern '{pattern}' caputred '{matched}' at line {line}, parse failed")
+      }
+      ValueReport::NegativeEpsilon(epsilon) => {
+        write!(f, "the epsilon = {epsilon} is negative")
+      }
     }
   }
 }

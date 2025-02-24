@@ -14,9 +14,9 @@ use std::{
 };
 
 use crate::{
-  assert::{AssertConfig, AssertError, DisplayErrs},
-  regression::{BuildError, FailedState, State, GOLDEN_DIR},
   Args, Assert,
+  assert::{AssertConfig, AssertError, DisplayErrs},
+  regression::{BuildError, FailedState, GOLDEN_DIR, State},
 };
 
 #[derive(Default, Debug, Deserialize, Serialize, Clone)]

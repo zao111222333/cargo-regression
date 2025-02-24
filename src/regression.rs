@@ -11,9 +11,9 @@ use itertools::{Either, Itertools};
 use tokio::{fs::remove_dir_all, sync::Semaphore};
 
 use crate::{
+  Args,
   assert::{AssertError, DisplayErrs},
   config::FullConfig,
-  Args,
 };
 
 pub(crate) const GOLDEN_DIR: &str = "__golden__";
@@ -91,14 +91,20 @@ impl Termination for TestExitCode {
         println!();
         let failed_num = faileds.len();
         if failed_num == 0 {
-          println!("test result: {}. {count_ok} passed; {failed_num} failed; {count_ignored} ignored; {count_filtered} filtered out; finished in {time:.2}s", State::Ok(None));
+          println!(
+            "test result: {}. {count_ok} passed; {failed_num} failed; {count_ignored} ignored; {count_filtered} filtered out; finished in {time:.2}s",
+            State::Ok(None)
+          );
           ExitCode::SUCCESS
         } else {
           eprint!("failures:");
           for failed in &faileds {
             eprint!("{failed}");
           }
-          eprintln!("\n\ntest result: {}. {count_ok} passed; {failed_num} failed; {count_ignored} ignored; {count_filtered} filtered out; finished in {time:.2}s", State::Ok(None));
+          eprintln!(
+            "\n\ntest result: {}. {count_ok} passed; {failed_num} failed; {count_ignored} ignored; {count_filtered} filtered out; finished in {time:.2}s",
+            State::Ok(None)
+          );
           ExitCode::FAILURE
         }
       }
@@ -254,9 +260,5 @@ async fn walk(
       Err(e) => errs.extend(e),
     }
   }
-  if errs.is_empty() {
-    Ok(file_configs)
-  } else {
-    Err(errs)
-  }
+  if errs.is_empty() { Ok(file_configs) } else { Err(errs) }
 }
