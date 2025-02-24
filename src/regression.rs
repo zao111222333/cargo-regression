@@ -126,7 +126,7 @@ impl Args {
   }
 }
 async fn _test(args: &'static Args) -> Result<TestResult, Vec<BuildError>> {
-  let f1 = async move {
+  let f1 = async {
     if args.workdir.exists() {
       remove_dir_all(&args.workdir)
         .await
@@ -162,7 +162,6 @@ async fn _test(args: &'static Args) -> Result<TestResult, Vec<BuildError>> {
   let mut count_ignored = 0;
   let mut count_filtered = 0;
   let mut faileds = Vec::with_capacity(handles.len());
-  // TODO: iter
   for handle in handles {
     match handle.await.unwrap() {
       State::Ok(Some(_)) => count_ok += 1,

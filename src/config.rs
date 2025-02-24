@@ -288,7 +288,7 @@ impl FullConfig {
       let toml_str = if args.debug { self.to_toml() } else { String::new() };
       let debug_config = workdir.join(format!("__debug__.{name}.toml"));
       let task_future = self.assert(rootdir, workdir.clone());
-      let debug_future = async move {
+      let debug_future = async {
         if args.debug {
           tokio::fs::write(&debug_config, toml_str)
             .await
