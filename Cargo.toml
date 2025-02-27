@@ -12,7 +12,7 @@ categories = ["development-tools"]
 description = "Collect test task from input files, execute them and compare results with golden."
 
 [dependencies]
-tokio = { version = "1.42", features = ["full"] }
+tokio = { version = "1.43", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 indexmap = { version = "2.7", features = ["serde"] }
 toml = "0.8"

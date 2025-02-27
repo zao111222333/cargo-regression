@@ -268,7 +268,7 @@ impl FullConfig {
     }
     let print_errs = *self.print_errs;
     let rootdir = path.parent().unwrap();
-    let path_str = path.display().to_string();
+    let path_str = path.to_str().unwrap();
     let workdir = args.workdir.join(
       // remove the root of rootdir
       {
