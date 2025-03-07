@@ -276,7 +276,7 @@ impl FullConfig {
         if path_str.starts_with(rootdir) {
           &path_str[rootdir.len() + 1..]
         } else {
-          &path_str
+          path_str
         }
       },
     );
