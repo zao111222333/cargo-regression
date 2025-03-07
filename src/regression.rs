@@ -103,7 +103,7 @@ impl Termination for TestExitCode {
           }
           eprintln!(
             "\n\ntest result: {}. {count_ok} passed; {failed_num} failed; {count_ignored} ignored; {count_filtered} filtered out; finished in {time:.2}s",
-            State::Ok(None)
+            State::Failed(None)
           );
           ExitCode::FAILURE
         }
