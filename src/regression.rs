@@ -70,7 +70,7 @@ impl fmt::Display for State {
       }
       Self::Failed(None) => write!(f, "{}", "FAILED".red()),
       Self::Ignored => write!(f, "{}", "ignored".yellow()),
-      Self::FilteredOut => write!(f, "{}", "filtered out".dimmed()),
+      Self::FilteredOut => write!(f, "{}", "filtered out".bright_black()),
     }
   }
 }
