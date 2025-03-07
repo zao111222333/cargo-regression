@@ -7,6 +7,7 @@ use std::{
   time::{Duration, Instant},
 };
 
+use colored::Colorize;
 use itertools::{Either, Itertools};
 use tokio::{fs::remove_dir_all, sync::Semaphore};
 
@@ -62,14 +63,14 @@ impl fmt::Display for FailedState {
 impl fmt::Display for State {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      Self::Ok(None) => write!(f, "\x1B[32mok\x1B[0m"),
-      Self::Ok(Some(time)) => write!(f, "{:.2}s \x1B[32mok\x1B[0m", time.as_secs_f32()),
+      Self::Ok(None) => write!(f, "{}", "ok".green()),
+      Self::Ok(Some(time)) => write!(f, "{:.2}s {}", time.as_secs_f32(), "ok".green()),
       Self::Failed(Some((_, time))) => {
-        write!(f, "{:.2}s \x1B[31mFAILED\x1B[0m", time.as_secs_f32())
+        write!(f, "{:.2}s {}", time.as_secs_f32(), "FAILED".red())
       }
-      Self::Failed(None) => write!(f, "\x1B[31mFAILED\x1B[0m"),
-      Self::Ignored => write!(f, "\x1B[33mignored\x1B[0m"),
-      Self::FilteredOut => write!(f, "\x1B[2mfiltered out\x1B[0m"),
+      Self::Failed(None) => write!(f, "{}", "FAILED".red()),
+      Self::Ignored => write!(f, "{}", "ignored".yellow()),
+      Self::FilteredOut => write!(f, "{}", "filtered out".dimmed()),
     }
   }
 }
