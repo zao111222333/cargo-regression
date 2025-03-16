@@ -274,7 +274,8 @@ impl FullConfig {
       {
         let rootdir = args.rootdir.to_str().unwrap();
         if path_str.starts_with(rootdir) {
-          &path_str[rootdir.len() + 1..]
+          let end_with_slash = rootdir.ends_with(if cfg!(windows) { '\\' } else { '/' });
+          &path_str[rootdir.len() + if end_with_slash { 0 } else { 1 }..]
         } else {
           path_str
         }
