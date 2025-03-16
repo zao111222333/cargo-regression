@@ -382,7 +382,7 @@ impl FullConfig {
       args: &'s [String],
       workdir: &'s Path,
     }
-    let log_file = workdir.join(format!("__debug__.prepare.log"));
+    let log_file = workdir.join("__debug__.prepare.log");
     let out_file = std::fs::File::create(&log_file)
       .map_err(|e| AssertError::UnableToCreateDir(log_file.display().to_string(), e))?;
     let mut writer = std::io::BufWriter::new(out_file);
@@ -405,9 +405,9 @@ impl FullConfig {
             writeln!(&mut writer, "[INFO] {wrapper:?}").unwrap();
           } else {
             write!(&mut writer, "[ERROR] {wrapper:?}\nstdout:\n").unwrap();
-            writer.write(&output.stdout).unwrap();
+            writer.write_all(&output.stdout).unwrap();
             write!(&mut writer, "\nstderr:\n").unwrap();
-            writer.write(&output.stderr).unwrap();
+            writer.write_all(&output.stderr).unwrap();
             writeln!(&mut writer).unwrap();
           }
         }
