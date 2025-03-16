@@ -6,6 +6,8 @@ use std::{
   collections::HashSet,
   ffi::OsStr,
   fs::{create_dir_all, read_to_string, remove_dir_all},
+  io::Write as _,
+  iter::once,
   ops::{Deref, DerefMut},
   path::{Path, PathBuf},
   process::{Command, Output},
@@ -80,7 +82,13 @@ impl<T> DerefMut for Source<T> {
     &mut self.inner
   }
 }
-
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) struct Prepare {
+  cmd: String,
+  args: Option<Vec<String>>,
+  workdir: Option<String>,
+}
 #[derive(Debug, Default, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) struct FullConfig {
@@ -92,9 +100,10 @@ pub(crate) struct FullConfig {
   filtered: bool,
   #[serde(skip)]
   ignore: Source<bool>,
+  pub(crate) prepare: Source<Vec<Prepare>>,
   print_errs: Source<bool>,
   pub(crate) permit: Source<u32>,
-  exe_path: Source<String>,
+  cmd: Source<String>,
   epsilon: Source<f32>,
   args: Source<Vec<String>>,
   envs: Source<IndexMap<String, String>>,
@@ -111,7 +120,8 @@ struct Config {
   ignore: Option<bool>,
   print_errs: Option<bool>,
   permit: Option<u32>,
-  exe_path: Option<String>,
+  cmd: Option<String>,
+  prepare: Option<Vec<Prepare>>,
   extensions: Option<HashSet<String>>,
   epsilon: Option<f32>,
   args: Option<Vec<String>>,
@@ -127,7 +137,7 @@ impl FullConfig {
   }
   pub(crate) fn new(args: &'static Args) -> Self {
     Self {
-      exe_path: args.exe_path.clone().into(),
+      cmd: args.cmd.clone().into(),
       print_errs: args.print_errs.into(),
       epsilon: 1e-10.into(),
       args: args.args.clone().into(),
@@ -150,8 +160,8 @@ impl FullConfig {
         args.permits,
       ));
     }
-    if self.exe_path.is_empty() {
-      return Err(BuildError::MissConfig(file.to_path_buf(), "exe-path"));
+    if self.cmd.is_empty() {
+      return Err(BuildError::MissConfig(file.to_path_buf(), "cmd"));
     }
     if self.extensions.is_empty() {
       return Err(BuildError::MissConfig(file.to_path_buf(), "extensions"));
@@ -173,7 +183,18 @@ impl FullConfig {
       *s = s.replace("{{rootdir}}", args.rootdir_abs.to_str().unwrap());
       Ok(())
     };
-    eval_str(&mut self.exe_path)?;
+    eval_str(&mut self.cmd)?;
+    for prepare in self.prepare.iter_mut() {
+      eval_str(&mut prepare.cmd)?;
+      if let Some(args) = prepare.args.as_mut() {
+        for arg in args.iter_mut() {
+          eval_str(arg)?;
+        }
+      }
+      if let Some(workdir) = prepare.workdir.as_mut() {
+        eval_str(workdir)?;
+      }
+    }
     for args in self.args.iter_mut() {
       eval_str(args)?;
     }
@@ -209,6 +230,9 @@ impl FullConfig {
       .map_err(|e| BuildError::UnableToRead(config_path.to_path_buf(), e))?;
     let config = toml::from_str::<Config>(&toml_str)
       .map_err(|e| BuildError::Toml(config_path.to_path_buf(), e))?;
+    if let Some(prepare) = config.prepare {
+      self.prepare = (prepare, config_path, debug).into();
+    }
     if let Some(ignore) = config.ignore {
       self.ignore = (ignore, config_path, debug).into();
     }
@@ -224,8 +248,8 @@ impl FullConfig {
     if let Some(permit) = config.permit {
       self.permit = (permit, config_path, debug).into();
     }
-    if let Some(exe_path) = config.exe_path {
-      self.exe_path = (exe_path, config_path, debug).into();
+    if let Some(cmd) = config.cmd {
+      self.cmd = (cmd, config_path, debug).into();
     }
     if let Some(args) = config.args {
       self.args = (args, config_path, debug).into();
@@ -286,16 +310,16 @@ impl FullConfig {
     let mut errs = if let Err(e) = self.prepare_dir(rootdir, &workdir) {
       vec![e]
     } else {
-      let toml_str = if args.debug { self.to_toml() } else { String::new() };
+      let toml_str = if args.nodebug { String::new() } else { self.to_toml() };
       let debug_config = workdir.join(format!("__debug__.{name}.toml"));
       let task_future = self.assert(rootdir, workdir.clone());
       let debug_future = async {
-        if args.debug {
+        if args.nodebug {
+          Ok(())
+        } else {
           tokio::fs::write(&debug_config, toml_str)
             .await
             .map_err(|e| AssertError::Write(debug_config.display().to_string(), e))
-        } else {
-          Ok(())
         }
       };
       let (e, mut errs) = tokio::join!(debug_future, task_future);
@@ -326,15 +350,17 @@ impl FullConfig {
   fn to_toml(&self) -> String {
     toml::to_string(&self)
       .map(|s| {
+        // TODO toml with comment
         s.replacen("args = [", &format!("{}args = [", self.args.source_display()), 1)
-          .replacen(
-            "exe_path = ",
-            &format!("{}exe_path = ", self.exe_path.source_display()),
-            1,
-          )
+          .replacen("cmd = ", &format!("{}cmd = ", self.cmd.source_display()), 1)
           .replacen(
             "extern_files = ",
             &format!("{}extern_files = ", self.extern_files.source_display()),
+            1,
+          )
+          .replacen(
+            "[[prepare]]",
+            &format!("{}[[prepare]]", self.prepare.source_display()),
             1,
           )
           .replacen("[envs]", &format!("{}[envs]", self.envs.source_display()), 1)
@@ -342,6 +368,52 @@ impl FullConfig {
           .replace("[[assert", &format!("{}[[assert", self.assert.source_display()))
       })
       .unwrap_or_default()
+  }
+  #[inline]
+  fn exec_prepares(&self, workdir: &Path) -> Result<(), AssertError> {
+    if self.prepare.is_empty() {
+      return Ok(());
+    }
+    /// Wrapper
+    #[derive(Debug)]
+    #[expect(non_camel_case_types)]
+    struct prepare<'s> {
+      cmd: &'s str,
+      args: &'s [String],
+      workdir: &'s Path,
+    }
+    let log_file = workdir.join(format!("__debug__.prepare.log"));
+    let out_file = std::fs::File::create(&log_file)
+      .map_err(|e| AssertError::UnableToCreateDir(log_file.display().to_string(), e))?;
+    let mut writer = std::io::BufWriter::new(out_file);
+    // exec all prepares
+    for prepare in self.prepare.iter() {
+      let wrapper = prepare {
+        cmd: &prepare.cmd,
+        args: prepare.args.as_ref().map_or(&[], Vec::as_slice),
+        workdir: prepare.workdir.as_ref().map_or(workdir, |workdir| Path::new(workdir)),
+      };
+      match Command::new(wrapper.cmd)
+        .current_dir(wrapper.workdir)
+        .args(wrapper.args)
+        .envs(&*self.envs)
+        .output()
+      {
+        Err(e) => return Err(AssertError::PrepareExec(format!("{wrapper:?}"), e)),
+        Ok(output) => {
+          if output.status.success() {
+            writeln!(&mut writer, "[INFO] {wrapper:?}").unwrap();
+          } else {
+            write!(&mut writer, "[ERROR] {wrapper:?}\nstdout:\n").unwrap();
+            writer.write(&output.stdout).unwrap();
+            write!(&mut writer, "\nstderr:\n").unwrap();
+            writer.write(&output.stderr).unwrap();
+            writeln!(&mut writer).unwrap();
+          }
+        }
+      }
+    }
+    Ok(())
   }
   #[inline]
   fn prepare_dir(&self, rootdir: &Path, workdir: &Path) -> Result<(), AssertError> {
@@ -400,22 +472,21 @@ impl FullConfig {
         })?;
       }
     }
+    self.exec_prepares(workdir)?;
     Ok(())
   }
   #[inline]
   fn exe(&self, workdir: &Path) -> Result<Output, AssertError> {
-    Command::new(&*self.exe_path)
+    Command::new(&*self.cmd)
       .current_dir(workdir)
       .args(&*self.args)
       .envs(&*self.envs)
       .output()
       .map_err(|e| {
         AssertError::Executes(
-          {
-            let mut v = vec![self.exe_path.inner.clone()];
-            v.extend(self.args.iter().cloned());
-            v
-          },
+          once(self.cmd.inner.clone())
+            .chain(self.args.iter().cloned())
+            .collect(),
           e,
         )
       })
@@ -456,7 +527,7 @@ struct Extend {
 #[test]
 fn test_parse() {
   let toml_str = r#"
-exe-path = "python"
+cmd = "python"
 args = ["{{name}}.py", "var1", "var2"]
 envs = { k1 = "v1", k2 = "v2" }
 

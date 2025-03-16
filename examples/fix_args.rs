@@ -8,6 +8,6 @@ use cargo_regression::{Args, TestExitCode};
 
 #[tokio::main]
 async fn main() -> TestExitCode {
-  let args = Args::new("demo").debug().workdir("tmp");
+  let args = Args::new("demo").workdir("tmp");
   args.test().await
 }

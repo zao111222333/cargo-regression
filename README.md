@@ -27,7 +27,7 @@ The tests will be exectued in `./tmp` in default, change the directory by `--wor
 | -- | -- |
 | `--workdir xxx`| Change the directory to perform test |
 | `--permits 2`| Set total permits to manage parallelism, see [`schedule-parallelism`](#schedule-parallelism) |
-| `--debug`| Show debug information & config files |
+| `--nodebug`| Don't show debug information & config files |
 | `--include demo/trybuild/*`| Set include [`filter`](#test-filter), default is none |
 | `--exclude demo/trybuild/*`| Set exclude [`filter`](#test-filter), default is none |
 
@@ -96,6 +96,15 @@ cargo regression ./demo --include demo/trybuild/* --exclude demo/trybuild/compil
 ``` shell
 cargo regression ./demo --include demo/test-premit/* --permits 1
 cargo regression ./demo --include demo/test-premit/* --permits 2
+```
+
+### Prepare
+You can define one or more preparation action(s).
+``` toml
+[[prepare]]
+cmd = "cargo"
+args = ["build", "--release", "--examples"] # default: []
+workdir = "{{rootdir}}/.." # default: the task's workdir
 ```
 
 
@@ -169,7 +178,7 @@ async fn main() -> TestExitCode {
   // Get arguments from CLI
   let args = Args::parse_from(std::env::args_os());
   // Or set fixed arguemnts
-  let args = Args::new("./demo").debug();
+  let args = Args::new("./demo");
   args.test().await
 }
 ```

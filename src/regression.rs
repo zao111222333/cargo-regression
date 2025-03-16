@@ -188,9 +188,10 @@ async fn walk(
   current_path: PathBuf,
   args: &'static Args,
 ) -> Result<Vec<(PathBuf, FullConfig)>, Vec<BuildError>> {
+  current_config.prepare.clear();
   let all_path = current_path.join("__all__.toml");
   if all_path.exists() {
-    match current_config.update(&all_path, args.debug) {
+    match current_config.update(&all_path, !args.nodebug) {
       Ok(_config) => current_config = _config,
       Err(e) => return Err(vec![e]),
     }
@@ -226,7 +227,7 @@ async fn walk(
               let config_file = file.with_extension("toml");
               let current_config = current_config.clone();
               if config_file.is_file() {
-                match current_config.update(&config_file, args.debug) {
+                match current_config.update(&config_file, !args.nodebug) {
                   Ok(config) => Some((file, config)),
                   Err(e) => {
                     errs.push(e);

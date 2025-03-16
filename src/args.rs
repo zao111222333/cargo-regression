@@ -11,12 +11,12 @@ use crate::regression::BuildError;
 #[derive(Debug, Parser)]
 #[command(version)]
 pub struct Args {
-  #[clap(long, help = "Debug mode flag, recommended")]
-  pub(crate) debug: bool,
+  #[clap(long, help = "NoDebug mode flag")]
+  pub(crate) nodebug: bool,
   #[clap(long, help = "Print errors [default: false, save errs to report]")]
   pub(crate) print_errs: bool,
   #[clap(long, help = "Default executable path", default_value_t = String::new())]
-  pub(crate) exe_path: String,
+  pub(crate) cmd: String,
   #[clap(long, help = "Default arguements", default_value = "{{name}}.{{extension}}", num_args = 1..)]
   pub(crate) args: Vec<String>,
   #[clap(long, help="Default input extensions(s)", num_args = 1..)]
@@ -40,8 +40,8 @@ pub struct Args {
 }
 
 impl Args {
-  pub const fn debug(mut self) -> Self {
-    self.debug = true;
+  pub const fn nodebug(mut self) -> Self {
+    self.nodebug = true;
     self
   }
   pub const fn print_errs(mut self) -> Self {
@@ -52,8 +52,8 @@ impl Args {
     self.permits = permits;
     self
   }
-  pub fn exe_path(mut self, exe_path: impl AsRef<str>) -> Self {
-    self.exe_path = exe_path.as_ref().into();
+  pub fn cmd(mut self, cmd: impl AsRef<str>) -> Self {
+    self.cmd = cmd.as_ref().into();
     self
   }
   pub fn args(mut self, iter: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
