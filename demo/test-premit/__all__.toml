@@ -1,3 +1,3 @@
-exe-path = "bash"
+cmd = "bash"
 extensions = ["sh"]
 permit = 1

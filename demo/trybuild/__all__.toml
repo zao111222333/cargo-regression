@@ -1,4 +1,4 @@
 # set exe_path for all sub-test
-exe-path = "rustc"
+cmd = "rustc"
 args = ["-o", "{{name}}.bin", "{{name}}.rs"]
 extensions = ["rs"]

@@ -56,7 +56,7 @@ There are three types of configs:
 
 | Argument | In `xxx.toml` | Description |
 | -- | -- | -- |
-| `--exe-path bash` | `exe-path = "bash"` | The executable path to execute task |
+| `--cmd bash` | `cmd = "bash"` | The executable path to execute task |
 | `--args {{name}}.sh arg1` | `args = ["{{name}}.sh", "arg1"]` | The arguements for execute task, default `["{{name}}.{{extension}}"]` |
 | NA | `envs = { k1 = "v1", k2 = "v2" }` | The environment variables, see [`test-match.toml`](demo/test-sh/test-match.toml) |
 | NA | `extern-files = ["data.json"]` | In defualt only `{{name}}.xx` files will be linked to work dir, use this to link other files, see [`__all__.toml`](demo/test-py/__all__.toml) |

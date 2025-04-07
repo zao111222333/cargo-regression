@@ -1,5 +1,5 @@
 # set exe_path for all sub-test
-exe-path = "python"
+cmd = "python"
 # you can define the requried permit for each test
 # to control the max parallelism,
 # the defualt permit is 0, which means the task will

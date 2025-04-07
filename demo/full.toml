@@ -4,7 +4,7 @@ ignore = false
 # define the task identifier extensions for all sub-dir
 extensions = ["py", "sh"]
 # The executable path to execute task
-exe-path = "bash"
+cmd = "bash"
 # The arguements for execute task
 args = ["{{name}}.{{extension}}", "arg1"]
 # The environment variables
