@@ -86,9 +86,9 @@ pub(crate) struct AssertConfig {
 impl Assert {
   #[inline]
   async fn save_output(
-    name: String,
-    workdir: PathBuf,
-    output: Arc<Output>,
+    name: &str,
+    workdir: &Path,
+    output: &Output,
   ) -> [Option<AssertError>; 2] {
     let stdout = workdir.join(format!("{name}.stdout"));
     let stderr = workdir.join(format!("{name}.stderr"));
@@ -116,13 +116,10 @@ impl Assert {
     golden_dir: PathBuf,
     output: Arc<Output>,
   ) -> Vec<AssertError> {
-    let mut errs = Vec::new();
-    // write stderr/stdout for debug
-    let write_future = {
-      let name = name.clone();
-      let workdir = workdir.clone();
-      let output = output.clone();
-      tokio::spawn(Self::save_output(name, workdir, output))
+    let mut errs = match Self::save_output(&name, &workdir, &output).await {
+      [None, None] => Vec::new(),
+      [Some(e), None] | [None, Some(e)] => vec![e],
+      [Some(e1), Some(e2)] => vec![e1, e2],
     };
     // exit_code
     let exit_code_want = self.exit_code.unwrap_or(0);
@@ -148,16 +145,9 @@ impl Assert {
     } else {
       Vec::new()
     };
-
     // await
     for f in futures.into_iter() {
       errs.extend(f.await.expect("join handle"));
-    }
-    match write_future.await.expect("join handle") {
-      [None, None] => {}
-      [None, Some(e)] => errs.push(e),
-      [Some(e), None] => errs.push(e),
-      [Some(e1), Some(e2)] => errs.extend([e1, e2]),
     }
     errs
   }
