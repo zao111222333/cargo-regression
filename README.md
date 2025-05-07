@@ -98,10 +98,14 @@ cargo regression ./demo --include demo/test-premit/* --permits 1
 cargo regression ./demo --include demo/test-premit/* --permits 2
 ```
 
-### Prepare
-You can define one or more preparation action(s).
+### Preprocess & Postprocess
+You can define one or more pre/post-paration action(s).
 ``` toml
-[[prepare]]
+[[preprocess]]
+cmd = "cargo"
+args = ["build", "--release", "--examples"] # default: []
+workdir = "{{rootdir}}/.." # default: the task's workdir
+[[postprocess]]
 cmd = "cargo"
 args = ["build", "--release", "--examples"] # default: []
 workdir = "{{rootdir}}/.." # default: the task's workdir

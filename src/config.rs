@@ -84,7 +84,7 @@ impl<T> DerefMut for Source<T> {
 }
 #[derive(Debug, Default, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) struct Prepare {
+pub(crate) struct PrePostProcess {
   cmd: String,
   args: Option<Vec<String>>,
   workdir: Option<String>,
@@ -100,13 +100,14 @@ pub(crate) struct FullConfig {
   filtered: bool,
   #[serde(skip)]
   ignore: Source<bool>,
-  pub(crate) prepare: Source<Vec<Prepare>>,
+  pub(crate) preprocess: Source<Vec<PrePostProcess>>,
+  pub(crate) postprocess: Source<Vec<PrePostProcess>>,
   print_errs: Source<bool>,
   pub(crate) permit: Source<u32>,
   cmd: Source<String>,
-  epsilon: Source<f32>,
   args: Source<Vec<String>>,
   envs: Source<IndexMap<String, String>>,
+  epsilon: Source<f32>,
   pub(crate) extensions: Source<HashSet<String>>,
   /// In default, only link all `{{name}}*` files into workdir.
   /// Use it to specify extern files.
@@ -121,7 +122,8 @@ struct Config {
   print_errs: Option<bool>,
   permit: Option<u32>,
   cmd: Option<String>,
-  prepare: Option<Vec<Prepare>>,
+  preprocess: Option<Vec<PrePostProcess>>,
+  postprocess: Option<Vec<PrePostProcess>>,
   extensions: Option<HashSet<String>>,
   epsilon: Option<f32>,
   args: Option<Vec<String>>,
@@ -184,14 +186,25 @@ impl FullConfig {
       Ok(())
     };
     eval_str(&mut self.cmd)?;
-    for prepare in self.prepare.iter_mut() {
-      eval_str(&mut prepare.cmd)?;
-      if let Some(args) = prepare.args.as_mut() {
+    for preprocess in self.preprocess.iter_mut() {
+      eval_str(&mut preprocess.cmd)?;
+      if let Some(args) = preprocess.args.as_mut() {
         for arg in args.iter_mut() {
           eval_str(arg)?;
         }
       }
-      if let Some(workdir) = prepare.workdir.as_mut() {
+      if let Some(workdir) = preprocess.workdir.as_mut() {
+        eval_str(workdir)?;
+      }
+    }
+    for postprocess in self.postprocess.iter_mut() {
+      eval_str(&mut postprocess.cmd)?;
+      if let Some(args) = postprocess.args.as_mut() {
+        for arg in args.iter_mut() {
+          eval_str(arg)?;
+        }
+      }
+      if let Some(workdir) = postprocess.workdir.as_mut() {
         eval_str(workdir)?;
       }
     }
@@ -230,8 +243,11 @@ impl FullConfig {
       .map_err(|e| BuildError::UnableToRead(config_path.to_path_buf(), e))?;
     let config = toml::from_str::<Config>(&toml_str)
       .map_err(|e| BuildError::Toml(config_path.to_path_buf(), e))?;
-    if let Some(prepare) = config.prepare {
-      self.prepare = (prepare, config_path, debug).into();
+    if let Some(preprocess) = config.preprocess {
+      self.preprocess = (preprocess, config_path, debug).into();
+    }
+    if let Some(postprocess) = config.postprocess {
+      self.postprocess = (postprocess, config_path, debug).into();
     }
     if let Some(ignore) = config.ignore {
       self.ignore = (ignore, config_path, debug).into();
@@ -359,8 +375,13 @@ impl FullConfig {
             1,
           )
           .replacen(
-            "[[prepare]]",
-            &format!("{}[[prepare]]", self.prepare.source_display()),
+            "[[preprocess]]",
+            &format!("{}[[preprocess]]", self.preprocess.source_display()),
+            1,
+          )
+          .replacen(
+            "[[postprocess]]",
+            &format!("{}[[postprocess]]", self.postprocess.source_display()),
             1,
           )
           .replacen("[envs]", &format!("{}[envs]", self.envs.source_display()), 1)
@@ -370,28 +391,33 @@ impl FullConfig {
       .unwrap_or_default()
   }
   #[inline]
-  fn exec_prepares(&self, workdir: &Path) -> Result<(), AssertError> {
-    if self.prepare.is_empty() {
+  fn exec_process(&self, workdir: &Path, is_preprocess: bool) -> Result<(), AssertError> {
+    let (processes, log_file_name) = if is_preprocess {
+      (&self.preprocess, "__debug__.preprocess.log")
+    } else {
+      (&self.postprocess, "__debug__.postprocess.log")
+    };
+    if processes.is_empty() {
       return Ok(());
     }
     /// Wrapper
     #[derive(Debug)]
     #[expect(non_camel_case_types)]
-    struct prepare<'s> {
+    struct process<'s> {
       cmd: &'s str,
       args: &'s [String],
       workdir: &'s Path,
     }
-    let log_file = workdir.join("__debug__.prepare.log");
+    let log_file = workdir.join(log_file_name);
     let out_file = std::fs::File::create(&log_file)
       .map_err(|e| AssertError::UnableToCreateDir(log_file.display().to_string(), e))?;
     let mut writer = std::io::BufWriter::new(out_file);
     // exec all prepares
-    for prepare in self.prepare.iter() {
-      let wrapper = prepare {
-        cmd: &prepare.cmd,
-        args: prepare.args.as_ref().map_or(&[], Vec::as_slice),
-        workdir: prepare.workdir.as_ref().map_or(workdir, |workdir| Path::new(workdir)),
+    for process in processes.iter() {
+      let wrapper = process {
+        cmd: &process.cmd,
+        args: process.args.as_ref().map_or(&[], Vec::as_slice),
+        workdir: process.workdir.as_ref().map_or(workdir, |workdir| Path::new(workdir)),
       };
       match Command::new(wrapper.cmd)
         .current_dir(wrapper.workdir)
@@ -399,7 +425,7 @@ impl FullConfig {
         .envs(&*self.envs)
         .output()
       {
-        Err(e) => return Err(AssertError::PrepareExec(format!("{wrapper:?}"), e)),
+        Err(e) => return Err(AssertError::ProcessExec(format!("{wrapper:?}"), e)),
         Ok(output) => {
           if output.status.success() {
             writeln!(&mut writer, "[INFO] {wrapper:?}").unwrap();
@@ -472,12 +498,12 @@ impl FullConfig {
         })?;
       }
     }
-    self.exec_prepares(workdir)?;
+    self.exec_process(workdir, true)?;
     Ok(())
   }
   #[inline]
   fn exe(&self, workdir: &Path) -> Result<Output, AssertError> {
-    Command::new(&*self.cmd)
+    let output = Command::new(&*self.cmd)
       .current_dir(workdir)
       .args(&*self.args)
       .envs(&*self.envs)
@@ -489,7 +515,9 @@ impl FullConfig {
             .collect(),
           e,
         )
-      })
+      })?;
+    self.exec_process(workdir, false)?;
+    Ok(output)
   }
   #[inline]
   async fn assert(self, rootdir: &Path, workdir: PathBuf) -> Vec<AssertError> {
