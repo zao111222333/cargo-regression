@@ -1,8 +1,9 @@
-echo 1 > $name.1.log
-echo 2 > $name.2.log
-echo 3 > $name.3.log
-echo 4 > $name.4.log
-echo 5 > $name.5.log
-echo 6 > $name.6.log
-echo 7 > $name.7.log
-echo 8 > $name.8.log
+mkdir log
+echo 1 > log/$name.1.log
+echo 2 > log/$name.2.log
+echo 3 > log/$name.3.log
+echo 4 > log/$name.4.log
+echo 5 > log/$name.5.log
+echo 6 > log/$name.6.log
+echo 7 > log/$name.7.log
+echo 8 > log/$name.8.log
