@@ -1,0 +1,3 @@
+[[assert.golden]]
+file = "{{name}}.*.log"
+equal = true

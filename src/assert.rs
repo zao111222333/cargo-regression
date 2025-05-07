@@ -67,6 +67,10 @@ pub enum AssertError {
   Value(String, ValueReport),
   #[error("regular expression: {0}")]
   Regex(regex::Error),
+  #[error("path pattern: {0}")]
+  PatternError(glob::PatternError),
+  #[error("path: {0}")]
+  GlobError(glob::GlobError),
 }
 
 pub(crate) struct DisplayErrs<'a, E: fmt::Display>(pub(crate) &'a Vec<E>);
@@ -222,6 +226,7 @@ pub struct Match {
   count_at_least: Option<usize>,
 }
 impl Golden {
+  #[expect(clippy::manual_strip)]
   #[inline]
   async fn process_assert(
     self,
@@ -237,22 +242,60 @@ impl Golden {
     let mut errs = Vec::new();
     let stdout_name = format!("{name}.stdout");
     let stderr_name = format!("{name}.stderr");
-    let golden = read(golden_dir.join(&self.file));
-    let golden_str = golden.as_deref();
     if self.file == stdout_name {
+      let golden = read(golden_dir.join(&self.file));
+      let golden_str = golden.as_deref();
       match core::str::from_utf8(&output.stdout) {
         Ok(output) => self.assert(config, &stdout_name, golden_str, output, &mut errs),
         Err(_) => errs.push(AssertError::Stdout),
       }
     } else if self.file == stderr_name {
+      let golden = read(golden_dir.join(&self.file));
+      let golden_str = golden.as_deref();
       match core::str::from_utf8(&output.stderr) {
         Ok(output) => self.assert(config, &stderr_name, golden_str, output, &mut errs),
         Err(_) => errs.push(AssertError::Stderr),
       }
     } else {
-      match read(workdir.join(&self.file)) {
-        Some(output) => self.assert(config, &stderr_name, golden_str, &output, &mut errs),
-        None => errs.push(AssertError::UnableToRead(self.file)),
+      match glob::glob(&workdir.join(&self.file).display().to_string()) {
+        Ok(paths) => {
+          let mut count = 0;
+          for entry in paths {
+            count += 1;
+            match entry {
+              Ok(path) => {
+                let path = path.display().to_string();
+                match read(&path) {
+                  Some(output) => {
+                    let workdir_str = workdir.display().to_string();
+                    let file_name = path.replace(
+                      if workdir_str.starts_with("./") {
+                        &workdir_str[2..]
+                      } else {
+                        &workdir_str
+                      },
+                      "",
+                    );
+                    let file_name = if file_name.starts_with("/") {
+                      &file_name[1..]
+                    } else {
+                      &file_name
+                    };
+                    let golden = read(golden_dir.join(file_name));
+                    let golden_str = golden.as_deref();
+                    self.assert(config, file_name, golden_str, &output, &mut errs)
+                  }
+                  None => errs.push(AssertError::UnableToRead(path)),
+                }
+              }
+              Err(e) => errs.push(AssertError::GlobError(e)),
+            }
+          }
+          if count == 0 {
+            errs.push(AssertError::UnableToRead(self.file))
+          }
+        }
+        Err(e) => errs.push(AssertError::PatternError(e)),
       }
     }
     errs
