@@ -77,6 +77,19 @@ There are a few keywords that will be replaced into its values, for all configs.
 
 In default the configs will be override after you define them in `xxx.toml`. But for `args`, `envs`, and `extern-files`, you can extend them base on the super's configs. See [`test-extend.toml`](demo/test-sh/test-extend.toml)
 
+## Workflow
+
+### Overall:
+1. Collect all tasks
+2. Parallel test each task, parallelism controlled by permit
+
+### For each task:
+1. Preprocess Cmds
+2. Execute Cmds
+3. Postprocess Cmds
+4. Assertion
+5. Collect & Report
+
 ## Advanced Features
 ### Test Filter
 Only test specified tasks.
@@ -110,7 +123,6 @@ cmd = "cargo"
 args = ["build", "--release", "--examples"] # default: []
 workdir = "{{rootdir}}/.." # default: the task's workdir
 ```
-
 
 ## assertion
 
