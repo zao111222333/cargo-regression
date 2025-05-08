@@ -188,8 +188,6 @@ async fn walk(
   current_path: PathBuf,
   args: &'static Args,
 ) -> Result<Vec<(PathBuf, FullConfig)>, Vec<BuildError>> {
-  current_config.preprocess.clear();
-  current_config.postprocess.clear();
   let all_path = current_path.join("__all__.toml");
   if all_path.exists() {
     match current_config.update(&all_path, !args.nodebug) {

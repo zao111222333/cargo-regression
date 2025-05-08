@@ -31,6 +31,8 @@ pub struct Args {
   exclude_set: HashSet<PathBuf>,
   #[clap(long, help = "Total permits to limit max parallelism", default_value_t = 1)]
   pub(crate) permits: u32,
+  #[clap(long, help = "Timeout second for each task", default_value_t = 600)]
+  pub(crate) timeout: u64,
   #[clap(long, help = "Change the directory to perform test", default_value = "./tmp")]
   pub(crate) workdir: PathBuf,
   #[clap(value_parser)]
@@ -50,6 +52,10 @@ impl Args {
   }
   pub const fn permits(mut self, permits: u32) -> Self {
     self.permits = permits;
+    self
+  }
+  pub const fn timeout(mut self, timeout: u64) -> Self {
+    self.timeout = timeout;
     self
   }
   pub fn cmd(mut self, cmd: impl AsRef<str>) -> Self {

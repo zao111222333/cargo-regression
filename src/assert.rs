@@ -1,17 +1,17 @@
 use core::fmt;
 use std::{
   fmt::Display,
-  fs::read_to_string,
   io,
   iter::once,
   ops::Deref,
   path::{Path, PathBuf},
-  process::{Command, Output},
+  process::Output,
   sync::Arc,
 };
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer, Serialize};
+use tokio::{fs::read_to_string, process::Command};
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 #[serde(rename_all = "kebab-case")]
@@ -21,7 +21,7 @@ pub struct Assert {
 }
 
 trait AssertT {
-  fn assert(
+  async fn assert(
     &self,
     config: AssertConfig,
     workdir: &Path,
@@ -76,6 +76,8 @@ pub enum AssertError {
   PatternError(glob::PatternError),
   #[error("path: {0}")]
   GlobError(glob::GlobError),
+  #[error("run out of timeout = {0} secend(s)")]
+  TimeOut(u64),
 }
 
 pub(crate) struct DisplayErrs<'a, E: fmt::Display>(pub(crate) &'a Vec<E>);
@@ -250,27 +252,31 @@ impl Golden {
     golden_dir: PathBuf,
     output: Arc<Output>,
   ) -> Vec<AssertError> {
-    fn read(path: impl AsRef<Path>) -> Option<String> {
-      read_to_string(&path).ok()
+    async fn read(path: impl AsRef<Path>) -> Option<String> {
+      read_to_string(&path).await.ok()
     }
     let mut errs = Vec::new();
     let stdout_name = format!("{name}.stdout");
     let stderr_name = format!("{name}.stderr");
     if self.file == stdout_name {
-      let golden = read(golden_dir.join(&self.file));
+      let golden = read(golden_dir.join(&self.file)).await;
       let golden_str = golden.as_deref();
       match core::str::from_utf8(&output.stdout) {
         Ok(output) => {
-          self.assert(config, &workdir, &stdout_name, golden_str, output, &mut errs)
+          self
+            .assert(config, &workdir, &stdout_name, golden_str, output, &mut errs)
+            .await
         }
         Err(_) => errs.push(AssertError::Stdout),
       }
     } else if self.file == stderr_name {
-      let golden = read(golden_dir.join(&self.file));
+      let golden = read(golden_dir.join(&self.file)).await;
       let golden_str = golden.as_deref();
       match core::str::from_utf8(&output.stderr) {
         Ok(output) => {
-          self.assert(config, &workdir, &stderr_name, golden_str, output, &mut errs)
+          self
+            .assert(config, &workdir, &stderr_name, golden_str, output, &mut errs)
+            .await
         }
         Err(_) => errs.push(AssertError::Stderr),
       }
@@ -283,7 +289,7 @@ impl Golden {
             match entry {
               Ok(path) => {
                 let path = path.display().to_string();
-                match read(&path) {
+                match read(&path).await {
                   Some(output) => {
                     let workdir_str = workdir.display().to_string();
                     let file_name = path.replace(
@@ -299,10 +305,11 @@ impl Golden {
                     } else {
                       &file_name
                     };
-                    let golden = read(golden_dir.join(file_name));
+                    let golden = read(golden_dir.join(file_name)).await;
                     let golden_str = golden.as_deref();
                     self
                       .assert(config, &workdir, file_name, golden_str, &output, &mut errs)
+                      .await
                   }
                   None => errs.push(AssertError::UnableToRead(path)),
                 }
@@ -372,7 +379,7 @@ impl fmt::Display for TextDiffs {
 }
 
 impl AssertT for Golden {
-  fn assert(
+  async fn assert(
     &self,
     config: AssertConfig,
     workdir: &Path,
@@ -395,17 +402,17 @@ impl AssertT for Golden {
     }
     if let Some(vec) = &self.r#match {
       for m in vec {
-        m.assert(config, workdir, file_name, golden, output, errs);
+        m.assert(config, workdir, file_name, golden, output, errs).await;
       }
     }
     if let Some(vec) = &self.value {
       for v in vec {
-        v.assert(config, workdir, file_name, golden, output, errs);
+        v.assert(config, workdir, file_name, golden, output, errs).await;
       }
     }
     if let Some(vec) = &self.custom {
       for c in vec {
-        c.assert(config, workdir, file_name, golden, output, errs);
+        c.assert(config, workdir, file_name, golden, output, errs).await;
       }
     }
   }
@@ -441,7 +448,7 @@ impl fmt::Display for CustomReport {
 }
 
 impl AssertT for Custom {
-  fn assert(
+  async fn assert(
     &self,
     config: AssertConfig,
     workdir: &Path,
@@ -456,7 +463,7 @@ impl AssertT for Custom {
     if let Some(envs) = self.envs.as_ref() {
       command.envs(envs);
     }
-    match command.current_dir(workdir).args(&paths).output() {
+    match command.current_dir(workdir).args(&paths).output().await {
       Ok(output) => {
         if !output.status.success() {
           errs.push(AssertError::Custom(
@@ -542,7 +549,7 @@ impl fmt::Display for ValueReport {
 }
 
 impl AssertT for Value {
-  fn assert(
+  async fn assert(
     &self,
     config: AssertConfig,
     _: &Path,
@@ -683,7 +690,7 @@ impl fmt::Display for MatchReport {
 }
 
 impl AssertT for Match {
-  fn assert(
+  async fn assert(
     &self,
     _: AssertConfig,
     _: &Path,

@@ -61,6 +61,7 @@ There are three types of configs:
 | NA | `envs = { k1 = "v1", k2 = "v2" }` | The environment variables, see [`test-match.toml`](demo/test-sh/test-match.toml) |
 | NA | `extern-files = ["data.json"]` | In defualt only `{{name}}.xx` files will be linked to work dir, use this to link other files, see [`__all__.toml`](demo/test-py/__all__.toml) |
 | `--print-errs` | `print-errs = true` | Print errors rather than save to reports |
+| `--timeout 60` | `timeout = 60` | Timeout second for each task, default is 600, see [`test-timeout.toml`](demo/test-sh/test-timeout.toml) |
 | NA | `ignore = true` | Ignore that task |
 | NA | `epsilon = 0.001` | The [`value`](#value) assert's tolerance, default is 1e-10 |
 

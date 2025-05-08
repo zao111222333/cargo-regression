@@ -10,10 +10,11 @@ use std::{
   iter::once,
   ops::{Deref, DerefMut},
   path::{Path, PathBuf},
-  process::{Command, Output},
+  process::Output,
   sync::Arc,
-  time::Instant,
+  time::{Duration, Instant},
 };
+use tokio::{process::Command, time::timeout};
 
 use crate::{
   Args, Assert,
@@ -103,6 +104,7 @@ pub(crate) struct FullConfig {
   pub(crate) preprocess: Source<Vec<PrePostProcess>>,
   pub(crate) postprocess: Source<Vec<PrePostProcess>>,
   print_errs: Source<bool>,
+  timeout: Source<u64>,
   pub(crate) permit: Source<u32>,
   cmd: Source<String>,
   args: Source<Vec<String>>,
@@ -121,6 +123,7 @@ struct Config {
   ignore: Option<bool>,
   print_errs: Option<bool>,
   permit: Option<u32>,
+  timeout: Option<u64>,
   cmd: Option<String>,
   preprocess: Option<Vec<PrePostProcess>>,
   postprocess: Option<Vec<PrePostProcess>>,
@@ -141,6 +144,7 @@ impl FullConfig {
     Self {
       cmd: args.cmd.clone().into(),
       print_errs: args.print_errs.into(),
+      timeout: args.timeout.into(),
       epsilon: 1e-10.into(),
       args: args.args.clone().into(),
       extensions: args.extensions.iter().cloned().collect::<HashSet<_>>().into(),
@@ -274,6 +278,9 @@ impl FullConfig {
     if let Some(permit) = config.permit {
       self.permit = (permit, config_path, debug).into();
     }
+    if let Some(timeout) = config.timeout {
+      self.timeout = (timeout, config_path, debug).into();
+    }
     if let Some(cmd) = config.cmd {
       self.cmd = (cmd, config_path, debug).into();
     }
@@ -333,12 +340,14 @@ impl FullConfig {
     );
     let now = Instant::now();
     let name = self.name.clone();
-    let mut errs = if let Err(e) = self.prepare_dir(rootdir, &workdir) {
+    let mut errs = if let Err(e) = self.prepare_dir(rootdir, &workdir).await {
       vec![e]
     } else {
       let toml_str = if args.nodebug { String::new() } else { self.to_toml() };
       let debug_config = workdir.join(format!("__debug__.{name}.toml"));
-      let task_future = self.assert(rootdir, workdir.clone());
+      let time_secs = self.timeout.inner;
+      let task_future =
+        timeout(Duration::from_secs(time_secs), self.assert(rootdir, workdir.clone()));
       let debug_future = async {
         if args.nodebug {
           Ok(())
@@ -348,8 +357,9 @@ impl FullConfig {
             .map_err(|e| AssertError::Write(debug_config.display().to_string(), e))
         }
       };
-      let (e, mut errs) = tokio::join!(debug_future, task_future);
-      if let Err(e) = e {
+      let (dbg_res, task_res) = tokio::join!(debug_future, task_future);
+      let mut errs = task_res.unwrap_or(vec![AssertError::TimeOut(time_secs)]);
+      if let Err(e) = dbg_res {
         errs.push(e);
       }
       errs
@@ -401,7 +411,11 @@ impl FullConfig {
       .unwrap_or_default()
   }
   #[inline]
-  fn exec_process(&self, workdir: &Path, is_preprocess: bool) -> Result<(), AssertError> {
+  async fn exec_process(
+    &self,
+    workdir: &Path,
+    is_preprocess: bool,
+  ) -> Result<(), AssertError> {
     let (processes, log_file_name) = if is_preprocess {
       (&self.preprocess, "__debug__.preprocess.log")
     } else {
@@ -434,6 +448,7 @@ impl FullConfig {
         .args(wrapper.args)
         .envs(&*self.envs)
         .output()
+        .await
       {
         Err(e) => return Err(AssertError::ProcessExec(format!("{wrapper:?}"), e)),
         Ok(output) => {
@@ -452,7 +467,7 @@ impl FullConfig {
     Ok(())
   }
   #[inline]
-  fn prepare_dir(&self, rootdir: &Path, workdir: &Path) -> Result<(), AssertError> {
+  async fn prepare_dir(&self, rootdir: &Path, workdir: &Path) -> Result<(), AssertError> {
     let rootdir = if rootdir.is_absolute() {
       Cow::Borrowed(rootdir)
     } else {
@@ -508,16 +523,16 @@ impl FullConfig {
         })?;
       }
     }
-    self.exec_process(workdir, true)?;
-    Ok(())
+    self.exec_process(workdir, true).await
   }
   #[inline]
-  fn exe(&self, workdir: &Path) -> Result<Output, AssertError> {
+  async fn exe(&self, workdir: &Path) -> Result<Output, AssertError> {
     let output = Command::new(&*self.cmd)
       .current_dir(workdir)
       .args(&*self.args)
       .envs(&*self.envs)
       .output()
+      .await
       .map_err(|e| {
         AssertError::Executes(
           once(self.cmd.inner.clone())
@@ -526,12 +541,12 @@ impl FullConfig {
           e,
         )
       })?;
-    self.exec_process(workdir, false)?;
+    self.exec_process(workdir, false).await?;
     Ok(output)
   }
   #[inline]
   async fn assert(self, rootdir: &Path, workdir: PathBuf) -> Vec<AssertError> {
-    match self.exe(&workdir) {
+    match self.exe(&workdir).await {
       Ok(output) => {
         let assert_config = self.assert_config();
         self
