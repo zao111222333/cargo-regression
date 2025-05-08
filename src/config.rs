@@ -229,6 +229,16 @@ impl FullConfig {
     if let Some(goldens) = self.assert.golden.as_deref_mut() {
       for golden in goldens.iter_mut() {
         eval_str(&mut golden.file)?;
+        if let Some(customs) = golden.custom.as_mut() {
+          for custom in customs {
+            eval_str(&mut custom.cmd)?;
+            if let Some(envs) = custom.envs.as_mut() {
+              for v in envs.values_mut() {
+                eval_str(v)?;
+              }
+            }
+          }
+        }
       }
     }
     Ok(self)

@@ -184,6 +184,25 @@ value = [
 ]
 ```
 
+### `custom`
+
+Use external custom assert script to compare output and golden.
+The script's first/second arguments are output/golden file path, and should return 0 when assertion is success. `envs` will be passed as environment variables.
+See [`test-custom.toml`](demo/test-sh/test-custom.toml)
+``` toml
+# For each file matches {{name}}.*.out,
+# do
+# cd workdir && {{rootdir}}/cmp1.sh {{name}}.xxx.out __golden__/{{name}}.xxx.out
+# and
+# cd workdir && {{rootdir}}/cmp2.sh {{name}}.xxx.out __golden__/{{name}}.xxx.out (with env)
+[[assert.golden]]
+file = "{{name}}.*.out"
+custom = [
+  { cmd = "{{rootdir}}/cmp1.sh" },
+  { cmd = "{{rootdir}}/cmp2.sh", envs = {ABS_ERR="1e-10"} },
+]
+```
+
 ## Use its library
 
 ``` rust

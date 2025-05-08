@@ -3,12 +3,14 @@ use std::{
   fmt::Display,
   fs::read_to_string,
   io,
+  iter::once,
   ops::Deref,
   path::{Path, PathBuf},
-  process::Output,
+  process::{Command, Output},
   sync::Arc,
 };
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -22,6 +24,7 @@ trait AssertT {
   fn assert(
     &self,
     config: AssertConfig,
+    workdir: &Path,
     file_name: &str,
     golden: Option<&str>,
     output: &str,
@@ -65,6 +68,8 @@ pub enum AssertError {
   Match(String, MatchReport),
   #[error("file \"{0}\" assert value failed\n{1}")]
   Value(String, ValueReport),
+  #[error("file \"{0}\" assert custom failed\n{1}")]
+  Custom(String, Box<CustomReport>),
   #[error("regular expression: {0}")]
   Regex(regex::Error),
   #[error("path pattern: {0}")]
@@ -76,8 +81,8 @@ pub enum AssertError {
 pub(crate) struct DisplayErrs<'a, E: fmt::Display>(pub(crate) &'a Vec<E>);
 impl<E: fmt::Display> fmt::Display for DisplayErrs<'_, E> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    for err in self.0 {
-      writeln!(f, "{err}")?;
+    for (n, err) in self.0.iter().enumerate() {
+      writeln!(f, "==== ERROR {} ===\n{err}", n + 1)?;
     }
     Ok(())
   }
@@ -164,6 +169,7 @@ pub struct Golden {
   equal: Option<bool>,
   r#match: Option<Vec<Match>>,
   value: Option<Vec<Value>>,
+  pub custom: Option<Vec<Custom>>,
 }
 
 impl Golden {
@@ -225,6 +231,14 @@ pub struct Match {
   count_at_most: Option<usize>,
   count_at_least: Option<usize>,
 }
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "kebab-case")]
+pub struct Custom {
+  pub cmd: String,
+  pub envs: Option<IndexMap<String, String>>,
+}
+
 impl Golden {
   #[expect(clippy::manual_strip)]
   #[inline]
@@ -246,14 +260,18 @@ impl Golden {
       let golden = read(golden_dir.join(&self.file));
       let golden_str = golden.as_deref();
       match core::str::from_utf8(&output.stdout) {
-        Ok(output) => self.assert(config, &stdout_name, golden_str, output, &mut errs),
+        Ok(output) => {
+          self.assert(config, &workdir, &stdout_name, golden_str, output, &mut errs)
+        }
         Err(_) => errs.push(AssertError::Stdout),
       }
     } else if self.file == stderr_name {
       let golden = read(golden_dir.join(&self.file));
       let golden_str = golden.as_deref();
       match core::str::from_utf8(&output.stderr) {
-        Ok(output) => self.assert(config, &stderr_name, golden_str, output, &mut errs),
+        Ok(output) => {
+          self.assert(config, &workdir, &stderr_name, golden_str, output, &mut errs)
+        }
         Err(_) => errs.push(AssertError::Stderr),
       }
     } else {
@@ -283,7 +301,8 @@ impl Golden {
                     };
                     let golden = read(golden_dir.join(file_name));
                     let golden_str = golden.as_deref();
-                    self.assert(config, file_name, golden_str, &output, &mut errs)
+                    self
+                      .assert(config, &workdir, file_name, golden_str, &output, &mut errs)
                   }
                   None => errs.push(AssertError::UnableToRead(path)),
                 }
@@ -356,6 +375,7 @@ impl AssertT for Golden {
   fn assert(
     &self,
     config: AssertConfig,
+    workdir: &Path,
     file_name: &str,
     golden: Option<&str>,
     output: &str,
@@ -375,13 +395,88 @@ impl AssertT for Golden {
     }
     if let Some(vec) = &self.r#match {
       for m in vec {
-        m.assert(config, file_name, golden, output, errs);
+        m.assert(config, workdir, file_name, golden, output, errs);
       }
     }
     if let Some(vec) = &self.value {
       for v in vec {
-        v.assert(config, file_name, golden, output, errs);
+        v.assert(config, workdir, file_name, golden, output, errs);
       }
+    }
+    if let Some(vec) = &self.custom {
+      for c in vec {
+        c.assert(config, workdir, file_name, golden, output, errs);
+      }
+    }
+  }
+}
+
+#[derive(Debug)]
+pub struct CustomReport {
+  workdir: PathBuf,
+  custom: Custom,
+  epsilon: f32,
+  paths: [PathBuf; 2],
+  output: Output,
+}
+impl fmt::Display for CustomReport {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    let mut envs = IndexMap::new();
+    envs.insert("epsilon", self.epsilon.to_string());
+    if let Some(_envs) = self.custom.envs.as_ref() {
+      envs.extend(_envs.iter().map(|(k, v)| (k.as_str(), v.clone())));
+    }
+    writeln!(
+      f,
+      "--- custom ---\ncd {:?} && {:?} {:?} {:?}\n--- envs ---\n{envs:?}\n--- status ---\n{}\n--- stdout ---\n{}\n--- stderr ---\n{}",
+      self.workdir,
+      self.custom.cmd,
+      self.paths[0],
+      self.paths[1],
+      self.output.status,
+      core::str::from_utf8(&self.output.stdout).unwrap_or("Fail to convert to UTF-8"),
+      core::str::from_utf8(&self.output.stderr).unwrap_or("Fail to convert to UTF-8"),
+    )
+  }
+}
+
+impl AssertT for Custom {
+  fn assert(
+    &self,
+    config: AssertConfig,
+    workdir: &Path,
+    file_name: &str,
+    _: Option<&str>,
+    _: &str,
+    errs: &mut Vec<AssertError>,
+  ) {
+    let paths = [PathBuf::from(file_name), Path::new("__golden__").join(file_name)];
+    let mut command = Command::new(&self.cmd);
+    command.env("epsilon", config.epsilon.to_string());
+    if let Some(envs) = self.envs.as_ref() {
+      command.envs(envs);
+    }
+    match command.current_dir(workdir).args(&paths).output() {
+      Ok(output) => {
+        if !output.status.success() {
+          errs.push(AssertError::Custom(
+            file_name.to_string(),
+            Box::new(CustomReport {
+              custom: self.clone(),
+              epsilon: config.epsilon,
+              paths,
+              output,
+              workdir: workdir.to_path_buf(),
+            }),
+          ))
+        }
+      }
+      Err(e) => errs.push(AssertError::Executes(
+        once(self.cmd.clone())
+          .chain(paths.iter().map(|p| p.display().to_string()))
+          .collect(),
+        e,
+      )),
     }
   }
 }
@@ -450,6 +545,7 @@ impl AssertT for Value {
   fn assert(
     &self,
     config: AssertConfig,
+    _: &Path,
     file_name: &str,
     _: Option<&str>,
     output: &str,
@@ -590,6 +686,7 @@ impl AssertT for Match {
   fn assert(
     &self,
     _: AssertConfig,
+    _: &Path,
     file_name: &str,
     _: Option<&str>,
     output: &str,
