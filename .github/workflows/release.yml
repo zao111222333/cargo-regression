@@ -39,6 +39,7 @@ jobs:
           mv target/x86_64-unknown-linux-musl/release/examples/regression examples/regression
           rm -rf examples/fix_args.rs
           mv demo examples/demo
+          mv README.md examples/README.md
           zip -r examples.zip examples
       - name: Upload to Release
         uses: actions/upload-release-asset@v1
