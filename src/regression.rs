@@ -3,13 +3,19 @@ use std::{
   io,
   path::PathBuf,
   process::{ExitCode, Termination},
-  sync::Arc,
+  sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+  },
   time::{Duration, Instant},
 };
 
 use colored::Colorize;
 use itertools::{Either, Itertools};
-use tokio::{fs::remove_dir_all, sync::Semaphore};
+use tokio::{
+  fs::remove_dir_all,
+  sync::{Mutex, Semaphore},
+};
 
 use crate::{
   Args,
@@ -37,6 +43,7 @@ pub enum BuildError {
   InputExtToml,
 }
 
+#[derive(Debug)]
 pub(crate) enum FailedState {
   ReportSaved(PathBuf),
   NoReport(PathBuf, Vec<AssertError>),
@@ -148,11 +155,20 @@ async fn _test(args: &'static Args) -> Result<TestResult, Vec<BuildError>> {
   if let Err(e) = clean_dir {
     return Err(vec![e]);
   }
+  let file_configs = file_configs?;
+  let count_ok = Arc::new(AtomicUsize::new(0));
+  let count_ignored = Arc::new(AtomicUsize::new(0));
+  let count_filtered = Arc::new(AtomicUsize::new(0));
+  let faileds = Arc::new(Mutex::new(Vec::with_capacity(file_configs.len())));
   let scheduler = Arc::new(Semaphore::new(args.permits as usize));
-  let handles: Vec<_> = file_configs?
+  let handles: Vec<_> = file_configs
     .into_iter()
     .map(|(path, config)| {
       let scheduler = scheduler.clone();
+      let count_ok = count_ok.clone();
+      let count_ignored = count_ignored.clone();
+      let count_filtered = count_filtered.clone();
+      let faileds = faileds.clone();
       tokio::spawn(async move {
         let _permit = scheduler
           .acquire_many(*config.permit)
@@ -160,26 +176,26 @@ async fn _test(args: &'static Args) -> Result<TestResult, Vec<BuildError>> {
           .expect("Semaphore closed");
         let state = config.test(&path, args).await;
         println!("test {} ... {}", path.display(), state);
-        state
+        match state {
+          State::Ok(Some(_)) => _ = count_ok.fetch_add(1, Ordering::Release),
+          State::Failed(Some((failed, _))) => faileds.lock().await.push(failed),
+          State::Ok(None) | State::Failed(None) => unreachable!(),
+          State::Ignored => _ = count_ignored.fetch_add(1, Ordering::Release),
+          State::FilteredOut => _ = count_filtered.fetch_add(1, Ordering::Release),
+        }
       })
     })
     .collect();
-
-  let mut count_ok = 0;
-  let mut count_ignored = 0;
-  let mut count_filtered = 0;
-  let mut faileds = Vec::with_capacity(handles.len());
   for handle in handles {
-    match handle.await.unwrap() {
-      State::Ok(Some(_)) => count_ok += 1,
-      State::Failed(Some((failed, _))) => faileds.push(failed),
-      State::Ok(None) | State::Failed(None) => unreachable!(),
-      State::Ignored => count_ignored += 1,
-      State::FilteredOut => count_filtered += 1,
-    }
+    handle.await.unwrap();
   }
   scheduler.close();
-  Ok(TestResult { count_ok, count_ignored, count_filtered, faileds })
+  Ok(TestResult {
+    count_ok: count_ok.load(Ordering::Relaxed),
+    count_ignored: count_ignored.load(Ordering::Relaxed),
+    count_filtered: count_filtered.load(Ordering::Relaxed),
+    faileds: Arc::try_unwrap(faileds).unwrap().into_inner(),
+  })
 }
 
 #[async_recursion::async_recursion]
