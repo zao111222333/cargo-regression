@@ -460,6 +460,17 @@ impl FullConfig {
             write!(&mut writer, "\nstderr:\n").unwrap();
             writer.write_all(&output.stderr).unwrap();
             writeln!(&mut writer).unwrap();
+            return Err(AssertError::ProcessStatus(
+              format!("{wrapper:?}"),
+              format!(
+                "-- status --\n{}\n-- stdout --\n{}\n-- stderr --\n{}",
+                output.status,
+                core::str::from_utf8(&output.stdout)
+                  .unwrap_or("unable to decoder stdout"),
+                core::str::from_utf8(&output.stderr)
+                  .unwrap_or("unable to decoder stderr")
+              ),
+            ));
           }
         }
       }

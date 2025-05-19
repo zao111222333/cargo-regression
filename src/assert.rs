@@ -34,8 +34,10 @@ trait AssertT {
 
 #[derive(Debug, thiserror::Error)]
 pub enum AssertError {
-  #[error("{0}: {1}")]
+  #[error("{0}:\n{1}")]
   ProcessExec(String, io::Error),
+  #[error("{0}: {1}")]
+  ProcessStatus(String, String),
   #[error("execute {0:?}: {1}")]
   Executes(Vec<String>, io::Error),
   #[error("exit code, want: {want}, got: {got}")]
