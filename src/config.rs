@@ -7,7 +7,6 @@ use std::{
   ffi::OsStr,
   fs::{create_dir_all, read_to_string, remove_dir_all},
   io::Write as _,
-  iter::once,
   ops::{Deref, DerefMut},
   path::{Path, PathBuf},
   process::Output,
@@ -21,6 +20,30 @@ use crate::{
   assert::{AssertConfig, AssertError, DisplayErrs},
   regression::{BuildError, FailedState, GOLDEN_DIR, State},
 };
+
+pub(crate) struct CmdDisplay<'s> {
+  pub(crate) cmd: &'s str,
+  pub(crate) args: &'s [String],
+  pub(crate) workdir: &'s Path,
+  pub(crate) envs: Option<&'s IndexMap<String, String>>,
+}
+
+impl fmt::Display for CmdDisplay<'_> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    writeln!(f, "```bash")?;
+    if let Some(envs) = self.envs {
+      for (k, v) in envs {
+        writeln!(f, "export {k:?}={v:?}")?;
+      }
+    }
+    writeln!(f, "cd {:?}", self.workdir)?;
+    write!(f, "{:?}", self.cmd)?;
+    for arg in self.args {
+      write!(f, " \\\n\t{arg:?}")?;
+    }
+    writeln!(f, "\n```")
+  }
+}
 
 #[derive(Default, Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "kebab-case")]
@@ -424,24 +447,17 @@ impl FullConfig {
     if processes.is_empty() {
       return Ok(());
     }
-    /// Wrapper
-    #[derive(Debug)]
-    #[expect(non_camel_case_types)]
-    struct process<'s> {
-      cmd: &'s str,
-      args: &'s [String],
-      workdir: &'s Path,
-    }
     let log_file = workdir.join(log_file_name);
     let out_file = std::fs::File::create(&log_file)
       .map_err(|e| AssertError::UnableToCreateDir(log_file.display().to_string(), e))?;
     let mut writer = std::io::BufWriter::new(out_file);
     // exec all prepares
     for process in processes.iter() {
-      let wrapper = process {
+      let wrapper = CmdDisplay {
         cmd: &process.cmd,
         args: process.args.as_ref().map_or(&[], Vec::as_slice),
         workdir: process.workdir.as_ref().map_or(workdir, |workdir| Path::new(workdir)),
+        envs: None,
       };
       match Command::new(wrapper.cmd)
         .current_dir(wrapper.workdir)
@@ -450,20 +466,20 @@ impl FullConfig {
         .output()
         .await
       {
-        Err(e) => return Err(AssertError::ProcessExec(format!("{wrapper:?}"), e)),
+        Err(e) => return Err(AssertError::ProcessExec(wrapper.to_string(), e)),
         Ok(output) => {
           if output.status.success() {
-            writeln!(&mut writer, "[INFO] {wrapper:?}").unwrap();
+            writeln!(&mut writer, "[INFO] {wrapper}").unwrap();
           } else {
-            write!(&mut writer, "[ERROR] {wrapper:?}\nstdout:\n").unwrap();
+            write!(&mut writer, "[ERROR] {wrapper}\nstdout:\n").unwrap();
             writer.write_all(&output.stdout).unwrap();
             write!(&mut writer, "\nstderr:\n").unwrap();
             writer.write_all(&output.stderr).unwrap();
             writeln!(&mut writer).unwrap();
             return Err(AssertError::ProcessStatus(
-              format!("{wrapper:?}"),
+              format!("{wrapper}"),
               format!(
-                "-- status --\n{}\n-- stdout --\n{}\n-- stderr --\n{}",
+                "\n-- status --\n{}\n-- stdout --\n{}\n-- stderr --\n{}",
                 output.status,
                 core::str::from_utf8(&output.stdout)
                   .unwrap_or("unable to decoder stdout"),
@@ -546,9 +562,13 @@ impl FullConfig {
       .await
       .map_err(|e| {
         AssertError::Executes(
-          once(self.cmd.inner.clone())
-            .chain(self.args.iter().cloned())
-            .collect(),
+          CmdDisplay {
+            cmd: &self.cmd,
+            args: &self.args,
+            workdir,
+            envs: Some(&self.envs),
+          }
+          .to_string(),
           e,
         )
       })?;

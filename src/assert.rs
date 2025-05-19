@@ -13,6 +13,8 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer, Serialize};
 use tokio::{fs::read_to_string, process::Command};
 
+use crate::config::CmdDisplay;
+
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 #[serde(rename_all = "kebab-case")]
 pub struct Assert {
@@ -38,8 +40,8 @@ pub enum AssertError {
   ProcessExec(String, io::Error),
   #[error("{0}: {1}")]
   ProcessStatus(String, String),
-  #[error("execute {0:?}: {1}")]
-  Executes(Vec<String>, io::Error),
+  #[error("execute: {1}\n{0}")]
+  Executes(String, io::Error),
   #[error("exit code, want: {want}, got: {got}")]
   ExitCode { want: i32, got: i32 },
   #[error("file \"{0}\": Unable to read")]
@@ -68,9 +70,9 @@ pub enum AssertError {
   CountConfig,
   #[error("file \"{0}\" match failed\n{1}")]
   Match(String, MatchReport),
-  #[error("file \"{0}\" assert value failed\n{1}")]
+  #[error("file \"{0}\" value assert failed\n{1}")]
   Value(String, ValueReport),
-  #[error("file \"{0}\" assert custom failed\n{1}")]
+  #[error("file \"{0}\" custom assert failed\n{1}")]
   Custom(String, Box<CustomReport>),
   #[error("regular expression: {0}")]
   Regex(regex::Error),
@@ -437,11 +439,13 @@ impl fmt::Display for CustomReport {
     }
     writeln!(
       f,
-      "--- custom ---\ncd {:?} && {:?} {:?} {:?}\n--- envs ---\n{envs:?}\n--- status ---\n{}\n--- stdout ---\n{}\n--- stderr ---\n{}",
-      self.workdir,
-      self.custom.cmd,
-      self.paths[0],
-      self.paths[1],
+      "--- custom ---\n{}--- status ---\n{}\n--- stdout ---\n{}\n--- stderr ---\n{}",
+      CmdDisplay {
+        cmd: &self.custom.cmd,
+        args: &[self.paths[0].display().to_string(), self.paths[1].display().to_string()],
+        workdir: &self.workdir,
+        envs: self.custom.envs.as_ref()
+      },
       self.output.status,
       core::str::from_utf8(&self.output.stdout).unwrap_or("Fail to convert to UTF-8"),
       core::str::from_utf8(&self.output.stderr).unwrap_or("Fail to convert to UTF-8"),
