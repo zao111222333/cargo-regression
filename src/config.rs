@@ -21,19 +21,19 @@ use crate::{
   regression::{BuildError, FailedState, GOLDEN_DIR, State},
 };
 
-pub(crate) struct CmdDisplay<'s> {
+pub(crate) struct CmdDisplay<'s, S: AsRef<str>> {
   pub(crate) cmd: &'s str,
   pub(crate) args: &'s [String],
   pub(crate) workdir: &'s Path,
-  pub(crate) envs: Option<&'s IndexMap<String, String>>,
+  pub(crate) envs: Option<&'s IndexMap<S, String>>,
 }
 
-impl fmt::Display for CmdDisplay<'_> {
+impl<S: AsRef<str>> fmt::Display for CmdDisplay<'_, S> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     writeln!(f, "```bash")?;
     if let Some(envs) = self.envs {
       for (k, v) in envs {
-        writeln!(f, "export {k:?}={v:?}")?;
+        writeln!(f, "export {:?}={v:?}", k.as_ref())?;
       }
     }
     writeln!(f, "cd {:?}", self.workdir)?;
@@ -453,11 +453,12 @@ impl FullConfig {
     let mut writer = std::io::BufWriter::new(out_file);
     // exec all prepares
     for process in processes.iter() {
+      let envs: Option<&IndexMap<String, String>> = None;
       let wrapper = CmdDisplay {
         cmd: &process.cmd,
         args: process.args.as_ref().map_or(&[], Vec::as_slice),
         workdir: process.workdir.as_ref().map_or(workdir, |workdir| Path::new(workdir)),
-        envs: None,
+        envs,
       };
       match Command::new(wrapper.cmd)
         .current_dir(wrapper.workdir)
@@ -479,7 +480,7 @@ impl FullConfig {
             return Err(AssertError::ProcessStatus(
               format!("{wrapper}"),
               format!(
-                "\n-- status --\n{}\n-- stdout --\n{}\n-- stderr --\n{}",
+                "-- status --\n{}\n-- stdout --\n{}\n-- stderr --\n{}",
                 output.status,
                 core::str::from_utf8(&output.stdout)
                   .unwrap_or("unable to decoder stdout"),

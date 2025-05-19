@@ -38,7 +38,7 @@ trait AssertT {
 pub enum AssertError {
   #[error("{0}:\n{1}")]
   ProcessExec(String, io::Error),
-  #[error("{0}: {1}")]
+  #[error("process\n{0}{1}")]
   ProcessStatus(String, String),
   #[error("execute: {1}\n{0}")]
   Executes(String, io::Error),
@@ -439,12 +439,12 @@ impl fmt::Display for CustomReport {
     }
     writeln!(
       f,
-      "--- custom ---\n{}--- status ---\n{}\n--- stdout ---\n{}\n--- stderr ---\n{}",
+      "-- custom --\n{}-- status --\n{}\n-- stdout --\n{}\n-- stderr --\n{}",
       CmdDisplay {
         cmd: &self.custom.cmd,
         args: &[self.paths[0].display().to_string(), self.paths[1].display().to_string()],
         workdir: &self.workdir,
-        envs: self.custom.envs.as_ref()
+        envs: Some(&envs)
       },
       self.output.status,
       core::str::from_utf8(&self.output.stdout).unwrap_or("Fail to convert to UTF-8"),
