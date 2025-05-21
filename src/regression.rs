@@ -3,10 +3,7 @@ use std::{
   io,
   path::PathBuf,
   process::{ExitCode, Termination},
-  sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
-  },
+  sync::Arc,
   time::{Duration, Instant},
 };
 
@@ -156,18 +153,12 @@ async fn _test(args: &'static Args) -> Result<TestResult, Vec<BuildError>> {
     return Err(vec![e]);
   }
   let file_configs = file_configs?;
-  let count_ok = Arc::new(AtomicUsize::new(0));
-  let count_ignored = Arc::new(AtomicUsize::new(0));
-  let count_filtered = Arc::new(AtomicUsize::new(0));
   let faileds = Arc::new(Mutex::new(Vec::with_capacity(file_configs.len())));
   let scheduler = Arc::new(Semaphore::new(args.permits as usize));
   let handles: Vec<_> = file_configs
     .into_iter()
     .map(|(path, config)| {
       let scheduler = scheduler.clone();
-      let count_ok = count_ok.clone();
-      let count_ignored = count_ignored.clone();
-      let count_filtered = count_filtered.clone();
       let faileds = faileds.clone();
       tokio::spawn(async move {
         let _permit = scheduler
@@ -177,23 +168,32 @@ async fn _test(args: &'static Args) -> Result<TestResult, Vec<BuildError>> {
         let state = config.test(&path, args).await;
         println!("test {} ... {}", path.display(), state);
         match state {
-          State::Ok(Some(_)) => _ = count_ok.fetch_add(1, Ordering::Release),
-          State::Failed(Some((failed, _))) => faileds.lock().await.push(failed),
+          State::Ok(Some(_)) => (1, 0, 0),
+          State::Failed(Some((failed, _))) => {
+            faileds.lock().await.push(failed);
+            (0, 0, 0)
+          }
           State::Ok(None) | State::Failed(None) => unreachable!(),
-          State::Ignored => _ = count_ignored.fetch_add(1, Ordering::Release),
-          State::FilteredOut => _ = count_filtered.fetch_add(1, Ordering::Release),
+          State::Ignored => (0, 1, 0),
+          State::FilteredOut => (0, 0, 1),
         }
       })
     })
     .collect();
+  let mut count_ok = 0;
+  let mut count_ignored = 0;
+  let mut count_filtered = 0;
   for handle in handles {
-    handle.await.unwrap();
+    let (ok, ignored, filtered) = handle.await.unwrap();
+    count_ok += ok;
+    count_ignored += ignored;
+    count_filtered += filtered;
   }
   scheduler.close();
   Ok(TestResult {
-    count_ok: count_ok.load(Ordering::Relaxed),
-    count_ignored: count_ignored.load(Ordering::Relaxed),
-    count_filtered: count_filtered.load(Ordering::Relaxed),
+    count_ok,
+    count_ignored,
+    count_filtered,
     faileds: Arc::try_unwrap(faileds).unwrap().into_inner(),
   })
 }
