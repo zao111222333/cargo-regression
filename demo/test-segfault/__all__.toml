@@ -1,0 +1,5 @@
+cmd = "./{{name}}"
+extensions = ["cpp"]
+[[preprocess]]
+cmd = "g++"
+args = ["-std=c++17", "{{name}}.{{extension}}", "-o", "segfault"]

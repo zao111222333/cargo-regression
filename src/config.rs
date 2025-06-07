@@ -5,12 +5,11 @@ use std::{
   borrow::Cow,
   collections::HashSet,
   ffi::OsStr,
-  fs::{create_dir_all, read_to_string, remove_dir_all},
+  fs::{File, create_dir_all, read_to_string, remove_dir_all},
   io::Write as _,
   ops::{Deref, DerefMut},
   path::{Path, PathBuf},
-  process::Output,
-  sync::Arc,
+  process::{ExitStatus, Stdio},
   time::{Duration, Instant},
 };
 use tokio::{process::Command, time::timeout};
@@ -21,6 +20,13 @@ use crate::{
   regression::{BuildError, FailedState, GOLDEN_DIR, State},
 };
 
+#[derive(Debug)]
+pub(crate) struct SigIntDisplay(Option<i32>);
+impl fmt::Display for SigIntDisplay {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    if let Some(sig) = self.0 { write!(f, " (raw = {sig})") } else { Ok(()) }
+  }
+}
 pub(crate) struct CmdDisplay<'s, S: AsRef<str>> {
   pub(crate) cmd: &'s str,
   pub(crate) args: &'s [String],
@@ -554,12 +560,17 @@ impl FullConfig {
     self.exec_process(workdir, true).await
   }
   #[inline]
-  async fn exe(&self, workdir: &Path) -> Result<Output, AssertError> {
-    let output = Command::new(&*self.cmd)
+  async fn exe(&self, workdir: &Path) -> Result<ExitStatus, AssertError> {
+    let stdout = File::create(workdir.join(format!("{}.stdout", self.name)))?;
+    let stderr = File::create(workdir.join(format!("{}.stderr", self.name)))?;
+    let status = Command::new(&*self.cmd)
       .current_dir(workdir)
       .args(&*self.args)
       .envs(&*self.envs)
-      .output()
+      .stderr(Stdio::from(stderr))
+      .stdout(Stdio::from(stdout))
+      .spawn()?
+      .wait()
       .await
       .map_err(|e| {
         AssertError::Executes(
@@ -573,24 +584,36 @@ impl FullConfig {
           e,
         )
       })?;
+    use std::os::unix::process::ExitStatusExt;
+    if status.code().is_none() {
+      let sig_int = status.signal();
+      let sig_str = sig_int
+        .and_then(|sig| nix::sys::signal::Signal::try_from(sig).ok())
+        .map_or("UNKOWN", |sig| sig.as_str());
+      return Err(AssertError::Terminated(
+        sig_str,
+        SigIntDisplay(sig_int),
+        CmdDisplay {
+          cmd: &self.cmd,
+          args: &self.args,
+          workdir,
+          envs: Some(&self.envs),
+        }
+        .to_string(),
+      ));
+    }
     self.exec_process(workdir, false).await?;
-    Ok(output)
+    Ok(status)
   }
   #[inline]
   async fn assert(self, rootdir: &Path, workdir: PathBuf) -> Vec<AssertError> {
     match self.exe(&workdir).await {
-      Ok(output) => {
+      Ok(status) => {
         let assert_config = self.assert_config();
         self
           .assert
           .inner
-          .assert(
-            assert_config,
-            self.name,
-            workdir,
-            rootdir.join(GOLDEN_DIR),
-            Arc::new(output),
-          )
+          .assert(assert_config, workdir, rootdir.join(GOLDEN_DIR), status)
           .await
       }
       Err(e) => vec![e],

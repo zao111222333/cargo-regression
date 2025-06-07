@@ -5,15 +5,14 @@ use std::{
   iter::once,
   ops::Deref,
   path::{Path, PathBuf},
-  process::Output,
-  sync::Arc,
+  process::{ExitStatus, Output},
 };
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer, Serialize};
 use tokio::{fs::read_to_string, process::Command};
 
-use crate::config::CmdDisplay;
+use crate::config::{CmdDisplay, SigIntDisplay};
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 #[serde(rename_all = "kebab-case")]
@@ -58,12 +57,8 @@ pub enum AssertError {
   Eq { file_name: String, diffs: TextDiffs },
   #[error("write file \"{0}\": {1}")]
   Write(String, io::Error),
-  #[error("unable to encode stdout to utf8")]
-  Stdout,
-  #[error("unable to encode stderr to utf8")]
-  Stderr,
-  #[error("terminated by a signal")]
-  Terminated,
+  #[error("execution terminated by a signal: {0}{1}\n{2}")]
+  Terminated(&'static str, SigIntDisplay, String),
   #[error(
     "You should specify one and only one of `count`, `count-at-least`, `count-at-most`"
   )]
@@ -82,6 +77,8 @@ pub enum AssertError {
   GlobError(glob::GlobError),
   #[error("run out of timeout = {0} secend(s)")]
   TimeOut(u64),
+  #[error("{0}")]
+  IO(#[from] io::Error),
 }
 
 pub(crate) struct DisplayErrs<'a, E: fmt::Display>(pub(crate) &'a Vec<E>);
@@ -100,61 +97,29 @@ pub(crate) struct AssertConfig {
 }
 impl Assert {
   #[inline]
-  async fn save_output(
-    name: &str,
-    workdir: &Path,
-    output: &Output,
-  ) -> [Option<AssertError>; 2] {
-    let stdout = workdir.join(format!("{name}.stdout"));
-    let stderr = workdir.join(format!("{name}.stderr"));
-    [
-      // save stdout to {{name}}.stdout
-      if let Err(e) = tokio::fs::write(&stdout, &output.stdout).await {
-        Some(AssertError::Write(stdout.display().to_string(), e))
-      } else {
-        None
-      },
-      // save stderr to {{name}}.stderr
-      if let Err(e) = tokio::fs::write(&stderr, &output.stderr).await {
-        Some(AssertError::Write(stderr.display().to_string(), e))
-      } else {
-        None
-      },
-    ]
-  }
-  #[inline]
   pub async fn assert(
     self,
     config: AssertConfig,
-    name: String,
     workdir: PathBuf,
     golden_dir: PathBuf,
-    output: Arc<Output>,
+    status: ExitStatus,
   ) -> Vec<AssertError> {
-    let mut errs = match Self::save_output(&name, &workdir, &output).await {
-      [None, None] => Vec::new(),
-      [Some(e), None] | [None, Some(e)] => vec![e],
-      [Some(e1), Some(e2)] => vec![e1, e2],
-    };
+    let mut errs = Vec::new();
     // exit_code
     let exit_code_want = self.exit_code.unwrap_or(0);
-    if let Some(exit_code_got) = output.status.code() {
+    if let Some(exit_code_got) = status.code() {
       if exit_code_want != exit_code_got {
         errs.push(AssertError::ExitCode { want: exit_code_want, got: exit_code_got });
       }
-    } else {
-      errs.push(AssertError::Terminated);
     }
     // golden
     let futures = if let Some(goldens) = self.golden {
       goldens
         .into_iter()
         .map(|golden| {
-          let name = name.clone();
           let workdir = workdir.clone();
           let golden_dir = golden_dir.clone();
-          let output = output.clone();
-          tokio::spawn(golden.process_assert(config, name, workdir, golden_dir, output))
+          tokio::spawn(golden.process_assert(config, workdir, golden_dir))
         })
         .collect()
     } else {
@@ -251,82 +216,51 @@ impl Golden {
   async fn process_assert(
     self,
     config: AssertConfig,
-    name: String,
     workdir: PathBuf,
     golden_dir: PathBuf,
-    output: Arc<Output>,
   ) -> Vec<AssertError> {
     async fn read(path: impl AsRef<Path>) -> Option<String> {
       read_to_string(&path).await.ok()
     }
     let mut errs = Vec::new();
-    let stdout_name = format!("{name}.stdout");
-    let stderr_name = format!("{name}.stderr");
-    if self.file == stdout_name {
-      let golden = read(golden_dir.join(&self.file)).await;
-      let golden_str = golden.as_deref();
-      match core::str::from_utf8(&output.stdout) {
-        Ok(output) => {
-          self
-            .assert(config, &workdir, &stdout_name, golden_str, output, &mut errs)
-            .await
-        }
-        Err(_) => errs.push(AssertError::Stdout),
-      }
-    } else if self.file == stderr_name {
-      let golden = read(golden_dir.join(&self.file)).await;
-      let golden_str = golden.as_deref();
-      match core::str::from_utf8(&output.stderr) {
-        Ok(output) => {
-          self
-            .assert(config, &workdir, &stderr_name, golden_str, output, &mut errs)
-            .await
-        }
-        Err(_) => errs.push(AssertError::Stderr),
-      }
-    } else {
-      match glob::glob(&workdir.join(&self.file).display().to_string()) {
-        Ok(paths) => {
-          let mut count = 0;
-          for entry in paths {
-            count += 1;
-            match entry {
-              Ok(path) => {
-                let path = path.display().to_string();
-                match read(&path).await {
-                  Some(output) => {
-                    let workdir_str = workdir.display().to_string();
-                    let file_name = path.replace(
-                      if workdir_str.starts_with("./") {
-                        &workdir_str[2..]
-                      } else {
-                        &workdir_str
-                      },
-                      "",
-                    );
-                    let file_name = if file_name.starts_with("/") {
-                      &file_name[1..]
+    match glob::glob(&workdir.join(&self.file).display().to_string()) {
+      Ok(paths) => {
+        let mut count = 0;
+        for entry in paths {
+          count += 1;
+          match entry {
+            Ok(path) => {
+              let path = path.display().to_string();
+              match read(&path).await {
+                Some(output) => {
+                  let workdir_str = workdir.display().to_string();
+                  let file_name = path.replace(
+                    if workdir_str.starts_with("./") {
+                      &workdir_str[2..]
                     } else {
-                      &file_name
-                    };
-                    let golden = read(golden_dir.join(file_name)).await;
-                    let golden_str = golden.as_deref();
-                    self
-                      .assert(config, &workdir, file_name, golden_str, &output, &mut errs)
-                      .await
-                  }
-                  None => errs.push(AssertError::UnableToRead(path)),
+                      &workdir_str
+                    },
+                    "",
+                  );
+                  let file_name =
+                    if file_name.starts_with("/") { &file_name[1..] } else { &file_name };
+                  let golden = read(golden_dir.join(file_name)).await;
+                  let golden_str = golden.as_deref();
+                  self
+                    .assert(config, &workdir, file_name, golden_str, &output, &mut errs)
+                    .await
                 }
+                None => errs.push(AssertError::UnableToRead(path)),
               }
-              Err(e) => errs.push(AssertError::GlobError(e)),
             }
-          }
-          if count == 0 {
-            errs.push(AssertError::UnableToRead(self.file))
+            Err(e) => errs.push(AssertError::GlobError(e)),
           }
         }
-        Err(e) => errs.push(AssertError::PatternError(e)),
+        if count == 0 {
+          errs.push(AssertError::UnableToRead(self.file))
+        }
       }
+      Err(e) => errs.push(AssertError::PatternError(e)),
     }
     errs
   }
